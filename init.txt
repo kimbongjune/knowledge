@@ -1,0 +1,10 @@
+conda create -n docassist python=3.11 -y
+
+conda activate docassist
+
+pip install -r requirements.txt
+
+# 1. 기존 PyTorch 제거
+pip uninstall -y torch torchvision torchaudio
+# 2. PyTorch CUDA 12.4 버전 설치
+pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu124
