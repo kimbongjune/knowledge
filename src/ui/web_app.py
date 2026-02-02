@@ -371,16 +371,44 @@ async def chat(
             image_attachments = [a['data'] for a in attachment_list if a.get('type') == 'image']
             is_vision = app_state.model_manager.is_current_model_vision()
             
-            # 7. Ollama 비동기 스트리밍 호출
+            # 7. GPU/CPU 감지 및 최적화 설정
+            import os
+            has_gpu = False
+            try:
+                # Ollama API로 GPU 사용 가능 여부 확인
+                async with httpx.AsyncClient(timeout=5.0) as check_client:
+                    ps_response = await check_client.get("http://localhost:11434/api/ps")
+                    if ps_response.status_code == 200:
+                        ps_data = ps_response.json()
+                        # 실행 중인 모델이 GPU를 사용하는지 확인
+                        for model in ps_data.get("models", []):
+                            if model.get("size_vram", 0) > 0:
+                                has_gpu = True
+                                break
+            except:
+                # API 호출 실패 시 환경변수로 판단
+                has_gpu = os.environ.get("CUDA_VISIBLE_DEVICES") is not None
+            
+            # CPU 코어 수 확인
+            cpu_count = os.cpu_count() or 4
+            
+            # 8. Ollama 비동기 스트리밍 호출
+            model_options = {
+                "temperature": float(opts.get("temperature", 0.3)),
+                "top_p": 0.9,
+                "num_predict": num_predict
+            }
+            
+            # GPU가 없으면 CPU 스레드 수 설정
+            if not has_gpu:
+                model_options["num_thread"] = cpu_count
+                model_options["num_gpu"] = 0  # GPU 레이어 비활성화
+            
             request_body = {
                 "model": app_state.model_manager._current_model_name or "qwen2.5:7b",
                 "prompt": prompt,
                 "stream": True,
-                "options": {
-                    "temperature": float(opts.get("temperature", 0.3)),
-                    "top_p": 0.9,
-                    "num_predict": num_predict
-                }
+                "options": model_options
             }
             
             if is_vision and image_attachments:
@@ -402,7 +430,14 @@ async def chat(
             )
             
             full_answer = ""
-            async with httpx.AsyncClient(timeout=300.0) as client:
+            # CPU 추론은 매우 느릴 수 있으므로 타임아웃을 충분히 설정
+            timeout = httpx.Timeout(
+                connect=60.0,    # 연결 타임아웃 60초
+                read=1800.0,     # 읽기 타임아웃 30분 (CPU 추론용)
+                write=60.0,      # 쓰기 타임아웃 60초
+                pool=60.0        # 연결 풀 타임아웃 60초
+            )
+            async with httpx.AsyncClient(timeout=timeout) as client:
                 async with client.stream("POST", "http://localhost:11434/api/generate", json=request_body) as response:
                     async for line in response.aiter_lines():
                         if line:
