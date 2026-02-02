@@ -334,14 +334,30 @@ async def index(request: Request):
             # 잘못된 컬렉션은 건너뛰기
             continue
     
-    return templates.TemplateResponse("index.html", {
+    default_system_prompt = """당신은 창의적인 문서 작성 전문 AI입니다.
+
+**[핵심 주제]**: (시스템이 첫 번째 질문에서 자동 추출)
+
+## 핵심 규칙
+1. **주제 유지 필수** - [핵심 주제]를 절대 변경하지 마세요. 사용자가 "양식대로", "이어서" 등 짧은 지시를 해도 원래 주제를 유지
+2. **참고 문서의 주제가 달라도 무시** - 참고 문서가 다른 주제라도 현재 작업 주제와 다르면 완전히 무시
+3. 참고 문서의 양식/구조만 참고하고, 내용은 현재 주제에 맞게 새로 작성
+4. 이전 대화에서 작성 중이던 내용을 이어서 작성
+5. **반드시 한국어로 답변하세요**
+
+(이전 대화 맥락, 참고 문서, 랜덤 시드는 시스템이 자동으로 추가합니다)"""
+    
+    response = templates.TemplateResponse("index.html", {
         "request": request,
         "models": [{"name": m.name, "size": m.size, "is_vision": m.is_vision} for m in models],
         "collections": collection_stats,
         "current_model": app_state.model_manager._current_model_name if app_state.model_manager else None,
         "current_collection": app_state.current_collection,
-        "user": {"id": user_id, "username": username} if user_id else None
+        "user": {"id": user_id, "username": username} if user_id else None,
+        "default_system_prompt": default_system_prompt
     })
+    response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+    return response
 
 
 
@@ -497,6 +513,9 @@ async def load_model(model_name: str = Form(...)):
         return JSONResponse({"error": str(e)}, status_code=500)
 
 
+@app.post("/api/setup-rag")
+async def setup_rag(collection_name: str = Form(...)):
+    """RAG 파이프라인 설정"""
     try:
         if not app_state.model_manager._current_model:
             return JSONResponse({"error": "먼저 모델을 로드하세요."}, status_code=400)
@@ -550,9 +569,37 @@ async def chat(
     
     async def generate():
         try:
-            # 1. 관련 문서 검색 (사용자 설정 k 적용)
+            # 0. 이전 대화에서 맥락 추출 (검색 품질 향상)
+            search_query = question
+            topic_context = ""
+            main_topic = ""  # 핵심 주제 (첫 질문에서 추출)
+            
+            if app_state.current_session_id:
+                recent_msgs = app_state.chat_storage.get_recent_messages(app_state.current_session_id, count=10)
+                if recent_msgs:
+                    # 첫 번째 사용자 질문에서 핵심 주제 추출 (가장 중요)
+                    user_msgs = [m for m in recent_msgs if m.role == "user"]
+                    if user_msgs:
+                        main_topic = user_msgs[0].content[:200]  # 첫 질문이 주제
+                    
+                    # 현재 질문이 짧으면 (지시/요청) 이전 주제를 검색에 사용
+                    if len(question) < 50 and main_topic:
+                        search_query = f"{main_topic} {question}"
+                    else:
+                        # 이전 질문들도 검색 쿼리에 추가
+                        prev_questions = [m.content[:100] for m in user_msgs][-3:]
+                        if prev_questions:
+                            search_query = f"{' '.join(prev_questions)} {question}"
+                    
+                    # 이전 AI 응답의 첫 부분을 주제로 추출
+                    for m in reversed(recent_msgs):
+                        if m.role == "assistant" and len(m.content) > 50:
+                            topic_context = m.content[:150].split('\n')[0]
+                            break
+            
+            # 1. 관련 문서 검색 (이전 대화 맥락 반영)
             docs = app_state.vector_manager.similarity_search(
-                question, 
+                search_query, 
                 app_state.current_collection, 
                 k=k_value
             ) if k_value > 0 else []
@@ -578,29 +625,45 @@ async def chat(
             # 3. 대화 기록 구성 (SQLite에서 로드)
             history_text = ""
             if app_state.current_session_id:
-                recent_messages = app_state.chat_storage.get_recent_messages(app_state.current_session_id, count=10)
+                recent_messages = app_state.chat_storage.get_recent_messages(app_state.current_session_id, count=20)
                 if recent_messages:
-                    history_text = "\n\n[이전 대화]\n"
+                    history_text = ""
                     for m in recent_messages:
                         if m.role == "user":
                             history_text += f"사용자: {m.content}\n"
                         else:
-                            content = m.content[:200] + "..." if len(m.content) > 200 else m.content
+                            content = m.content[:800] + "..." if len(m.content) > 800 else m.content
                             history_text += f"AI: {content}\n\n"
             
-            # 4. 프롬프트 구성 (사용자 시스템 프롬프트 반영)
-            base_system = system_prompt if system_prompt else """당신은 문서 분석 전문 AI 어시스턴트입니다.
-제공된 문서를 참고하여 질문에 정확하고 상세하게 답변해주세요.
-
-## 답변 규칙
-1. 문서에 있는 내용만 사용하세요
-2. 문서에 없는 내용은 "문서에서 해당 정보를 찾을 수 없습니다"라고 답변
-3. 가능하면 구체적인 수치, 날짜, 이름 등을 포함
-4. 답변은 명확하고 구조적으로 작성 (필요시 번호나 글머리 사용)
-5. 참고한 문서명을 언급하면 더 좋음"""
+            # 4. 프롬프트 구성
+            import random
+            
+            # 핵심 주제 힌트 (첫 질문 기반)
+            topic_hint = ""
+            if main_topic:
+                topic_hint = f"\n**[핵심 주제 - 절대 변경 금지]**: {main_topic[:100]}\n"
+            elif topic_context:
+                topic_hint = f"\n**[현재 작업 주제]**: {topic_context}\n"
+            
+            # 프론트 시스템 프롬프트가 기본값과 같으면 무시 (중복 방지)
+            default_prompt_check = "당신은 창의적인 문서 작성 전문 AI입니다"
+            is_custom = system_prompt and system_prompt.strip() and default_prompt_check not in system_prompt
+            user_instruction = f"\n\n## 사용자 추가 지시\n{system_prompt}" if is_custom else ""
+            
+            base_system = f"""당신은 창의적인 문서 작성 전문 AI입니다.
+{topic_hint}
+## 핵심 규칙
+1. **주제 유지 필수** - 위의 [핵심 주제]를 절대 변경하지 마세요. 사용자가 "양식대로", "이어서" 등 짧은 지시를 해도 원래 주제를 유지
+2. **참고 문서의 주제가 달라도 무시** - 참고 문서가 다른 주제라도 현재 작업 주제와 다르면 완전히 무시
+3. 참고 문서의 양식/구조만 참고하고, 내용은 현재 주제에 맞게 새로 작성
+4. 이전 대화에서 작성 중이던 내용을 이어서 작성
+5. **반드시 한국어로 답변하세요** (seed: {random.randint(1000,9999)}){user_instruction}"""
 
             prompt = f"""{base_system}
+
+## 이전 대화 (맥락 유지 필수)
 {history_text}
+
 [참고 문서]
 {context}
 
@@ -619,38 +682,12 @@ async def chat(
             image_attachments = [a['data'] for a in attachment_list if a.get('type') == 'image']
             is_vision = app_state.model_manager.is_current_model_vision()
             
-            # 7. GPU/CPU 감지 및 최적화 설정
-            import os
-            has_gpu = False
-            try:
-                # Ollama API로 GPU 사용 가능 여부 확인
-                async with httpx.AsyncClient(timeout=5.0) as check_client:
-                    ps_response = await check_client.get("http://localhost:11434/api/ps")
-                    if ps_response.status_code == 200:
-                        ps_data = ps_response.json()
-                        # 실행 중인 모델이 GPU를 사용하는지 확인
-                        for model in ps_data.get("models", []):
-                            if model.get("size_vram", 0) > 0:
-                                has_gpu = True
-                                break
-            except:
-                # API 호출 실패 시 환경변수로 판단
-                has_gpu = os.environ.get("CUDA_VISIBLE_DEVICES") is not None
-            
-            # CPU 코어 수 확인
-            cpu_count = os.cpu_count() or 4
-            
-            # 8. Ollama 비동기 스트리밍 호출
+            # 7. Ollama 비동기 스트리밍 호출 (GPU는 Ollama가 자동 감지)
             model_options = {
-                "temperature": float(opts.get("temperature", 0.3)),
-                "top_p": 0.9,
+                "temperature": float(opts.get("temperature", 0.7)),
+                "top_p": 0.95,
                 "num_predict": num_predict
             }
-            
-            # GPU가 없으면 CPU 스레드 수 설정
-            if not has_gpu:
-                model_options["num_thread"] = cpu_count
-                model_options["num_gpu"] = 0  # GPU 레이어 비활성화
             
             request_body = {
                 "model": app_state.model_manager._current_model_name or "qwen2.5:7b",
