@@ -1,0 +1,1563 @@
+<!DOCTYPE html>
+<html lang="ko">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Document Assistant</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        primary: '#3b82f6',
+                        dark: {
+                            900: '#0f172a',
+                            800: '#1e293b',
+                            700: '#334155',
+                            600: '#475569',
+                            500: '#64748b'
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        body {
+            font-family: 'Inter', 'Pretendard', 'Malgun Gothic', sans-serif;
+        }
+
+        /* Scrollbar */
+        ::-webkit-scrollbar {
+            width: 6px;
+            height: 6px;
+        }
+
+        ::-webkit-scrollbar-track {
+            background: transparent;
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: #475569;
+            border-radius: 3px;
+        }
+
+        ::-webkit-scrollbar-thumb:hover {
+            background: #64748b;
+        }
+
+        /* Textarea auto-resize */
+        .chat-input {
+            min-height: 48px;
+            max-height: 144px;
+            field-sizing: content;
+        }
+
+        /* Typing animation */
+        .typing-dots span {
+            animation: bounce 1.2s infinite;
+        }
+
+        .typing-dots span:nth-child(2) {
+            animation-delay: 0.2s;
+        }
+
+        .typing-dots span:nth-child(3) {
+            animation-delay: 0.4s;
+        }
+
+        @keyframes bounce {
+
+            0%,
+            60%,
+            100% {
+                transform: translateY(0);
+            }
+
+            30% {
+                transform: translateY(-4px);
+            }
+        }
+
+        /* Cursor blink */
+        .cursor {
+            animation: blink 1s infinite;
+        }
+
+        @keyframes blink {
+
+            0%,
+            50% {
+                opacity: 1;
+            }
+
+            51%,
+            100% {
+                opacity: 0;
+            }
+        }
+
+        /* Markdown in messages */
+        .message-content pre {
+            background: #1e293b;
+            padding: 12px;
+            border-radius: 8px;
+            overflow-x: auto;
+            margin: 8px 0;
+        }
+
+        .message-content code {
+            font-family: 'Consolas', 'Monaco', monospace;
+            font-size: 0.9em;
+        }
+
+        .message-content p {
+            margin-bottom: 8px;
+        }
+
+        .message-content ul,
+        .message-content ol {
+            margin-left: 20px;
+            margin-bottom: 8px;
+        }
+
+        .message-content h1,
+        .message-content h2,
+        .message-content h3 {
+            font-weight: 600;
+            margin: 12px 0 8px;
+        }
+    </style>
+</head>
+
+<body class="bg-dark-900 h-screen flex overflow-hidden text-gray-100">
+    <!-- Sidebar -->
+    <aside class="w-80 bg-dark-800 border-r border-dark-700 flex flex-col flex-shrink-0">
+        <!-- Header -->
+        <div class="p-4 border-b border-dark-700">
+            <div class="flex items-center justify-between mb-3">
+                <h1 class="text-lg font-bold text-white">Document Assistant</h1>
+                {% if user %}
+                <div class="flex items-center gap-2">
+                    <span class="text-xs text-gray-400">{{ user.username }}</span>
+                    <button onclick="logout()" class="text-xs text-gray-500 hover:text-red-400 transition-colors"
+                        title="로그아웃">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+                        </svg>
+                    </button>
+                </div>
+                {% else %}
+                <button onclick="openLoginModal()"
+                    class="text-xs text-primary hover:text-blue-400 transition-colors">로그인</button>
+                {% endif %}
+            </div>
+            <button
+                class="w-full py-2.5 px-4 bg-dark-700 hover:bg-dark-600 text-gray-300 rounded-lg text-sm font-medium transition-colors flex items-center justify-center gap-2"
+                onclick="clearChat()">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
+                </svg>
+                새 대화
+            </button>
+        </div>
+
+        <!-- Sections -->
+        <div class="flex-1 overflow-y-auto p-4 space-y-6">
+            <!-- Model Section -->
+            <div>
+                <label class="block text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">LLM 모델</label>
+                <div class="flex gap-2 mb-2">
+                    <select id="modelSelect" onchange="loadModel()"
+                        class="flex-1 px-3 py-2 bg-dark-700 border border-dark-600 rounded-lg text-sm text-gray-200 focus:outline-none focus:border-primary">
+                        <option value="">{% if models %}모델 선택{% else %}설치된 모델 없음{% endif %}</option>
+                        {% for model in models %}
+                        <option value="{{ model.name }}" data-vision="{{ model.is_vision }}">
+                            {{ model.name }} ({{ model.size }}){% if model.is_vision %} [Vision]{% endif %}
+                        </option>
+                        {% endfor %}
+                    </select>
+                    <button onclick="openModelManager()"
+                        class="p-2 bg-dark-700 border border-dark-600 rounded-lg text-gray-400 hover:text-white hover:border-dark-500 transition-colors"
+                        title="모델 관리">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                        </svg>
+                    </button>
+                </div>
+                <div id="modelStatus" class="text-xs text-gray-500 px-1">{% if models %}모델을 선택해주세요{% else %}다운로드 버튼으로 모델
+                    설치{% endif %}</div>
+            </div>
+
+            <!-- Folder Section -->
+            <div>
+                <label class="block text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">문서 폴더</label>
+                <div class="grid grid-cols-2 gap-2 mb-2">
+                    <button onclick="browsePath('')"
+                        class="py-1.5 px-3 bg-dark-700 border border-dark-600 rounded-lg text-xs text-gray-400 hover:text-white transition-colors">드라이브
+                        홈</button>
+                    <button onclick="goBack()"
+                        class="py-1.5 px-3 bg-dark-700 border border-dark-600 rounded-lg text-xs text-gray-400 hover:text-white transition-colors">상위
+                        폴더</button>
+                    <button onclick="createFolder()"
+                        class="py-1.5 px-3 bg-dark-700 border border-dark-600 rounded-lg text-xs text-gray-400 hover:text-white transition-colors flex items-center justify-center gap-1">
+                        <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
+                        </svg>
+                        새 폴더
+                    </button>
+                    <button onclick="goUploadDir()"
+                        class="py-1.5 px-3 bg-primary/20 border border-primary/40 rounded-lg text-xs text-primary hover:bg-primary/30 transition-colors">업로드
+                        폴더</button>
+                </div>
+                <input type="file" id="uploadInput" multiple hidden onchange="uploadFiles()">
+                <button onclick="document.getElementById('uploadInput').click()"
+                    class="w-full py-1.5 px-3 mb-2 bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-500 hover:to-purple-500 text-white rounded-lg text-xs font-medium transition-all flex items-center justify-center gap-2">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                            d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+                    </svg>
+                    파일 업로드
+                </button>
+                <div id="folderList"
+                    class="bg-dark-700 border border-dark-600 rounded-lg max-h-32 overflow-y-auto mb-2"></div>
+                <div class="relative mb-2">
+                    <input type="text" id="folderPath" placeholder="경로"
+                        class="w-full px-3 py-2 pr-8 bg-dark-700 border border-dark-600 rounded-lg text-sm text-gray-200 placeholder-gray-500 focus:outline-none focus:border-primary">
+                    <button onclick="browsePath(document.getElementById('folderPath').value)"
+                        class="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-white transition-colors"
+                        title="새로고침">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                        </svg>
+                    </button>
+                </div>
+                <button onclick="startIndexing()" id="indexBtn"
+                    class="w-full py-2 px-4 bg-primary hover:bg-blue-600 text-white rounded-lg text-sm font-medium transition-colors">
+                    인덱싱
+                </button>
+                <div id="indexStatus" class="text-xs text-gray-500 mt-2 px-1">폴더 선택 후 인덱싱</div>
+            </div>
+
+            <!-- Collection Section -->
+            <div>
+                <label class="block text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">컬렉션</label>
+                <div class="flex gap-2 mb-4">
+                    <select id="collectionSelect" onchange="selectCollection()"
+                        class="flex-1 bg-dark-800 border border-dark-600 rounded-lg px-4 py-2 text-gray-200 focus:outline-none focus:border-blue-500 transaction-colors appearance-none">
+                        <option value="">컬렉션 선택</option>
+                        {% for coll in collections %}
+                        <option value="{{ coll.name }}">{{ coll.name }} ({{ coll.count }})</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div id="ragStatus" class="text-xs text-gray-500 px-1">모델 + 컬렉션 선택 필요</div>
+                <div class="mt-2 px-1">
+                    <a href="/admin" target="_blank" class="text-[10px] text-gray-600 hover:text-gray-400">DB
+                        관리자(chat_history)</a>
+                </div>
+            </div>
+
+            <!-- Advanced Settings -->
+            <div>
+                <button onclick="toggleAdvancedSettings()"
+                    class="w-full py-2 px-3 bg-dark-700 border border-dark-600 rounded-lg text-sm text-gray-400 hover:text-white transition-colors flex items-center justify-between">
+                    고급 설정
+                    <span id="advancedArrow" class="text-xs">▼</span>
+                </button>
+                <div id="advancedSettings"
+                    class="hidden mt-2 p-3 bg-dark-700 border border-dark-600 rounded-lg space-y-3">
+                    <div>
+                        <label class="flex justify-between text-xs text-gray-400 mb-1">
+                            검색 문서 수 (K) <span id="kValue">7</span>
+                        </label>
+                        <input type="range" id="kSlider" min="1" max="20" value="7" class="w-full accent-primary"
+                            oninput="document.getElementById('kValue').textContent=this.value">
+                    </div>
+                    <div>
+                        <label class="flex justify-between text-xs text-gray-400 mb-1">
+                            최대 토큰 <span id="tokenValue">2048</span>
+                        </label>
+                        <input type="range" id="tokenSlider" min="128" max="8192" step="128" value="2048"
+                            class="w-full accent-primary"
+                            oninput="document.getElementById('tokenValue').textContent=this.value">
+                    </div>
+                    <div>
+                        <label class="flex justify-between text-xs text-gray-400 mb-1">
+                            창의성 <span id="tempValue">0.3</span>
+                        </label>
+                        <input type="range" id="tempSlider" min="0" max="1" step="0.1" value="0.3"
+                            class="w-full accent-primary"
+                            oninput="document.getElementById('tempValue').textContent=this.value">
+                    </div>
+                    <div>
+                        <label class="text-xs text-gray-400 mb-1 block">시스템 프롬프트</label>
+                        <textarea id="systemPrompt" rows="3"
+                            class="w-full px-2 py-1.5 bg-dark-800 border border-dark-600 rounded text-xs text-gray-300 resize-none focus:outline-none focus:border-primary">당신은 문서 분석 전문 AI 어시스턴트입니다.
+제공된 문서를 참고하여 질문에 정확하고 상세하게 답변해주세요.</textarea>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Previous Chats -->
+            <div class="flex-1 flex flex-col min-h-0">
+                <div class="flex items-center justify-between mb-2">
+                    <label class="text-xs font-semibold text-gray-400 uppercase tracking-wide">이전 대화</label>
+                    <button onclick="refreshSessions()" class="text-gray-500 hover:text-white transition-colors"
+                        title="새로고침">
+                        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                        </svg>
+                    </button>
+                </div>
+                <div id="sessionList"
+                    class="flex-1 overflow-y-auto bg-dark-700 border border-dark-600 rounded-lg max-h-48">
+                    <div class="p-3 text-center text-gray-500 text-xs">로딩 중...</div>
+                </div>
+            </div>
+        </div>
+    </aside>
+
+    <!-- Main Chat Area -->
+    <main class="flex-1 flex flex-col min-w-0 bg-dark-900">
+        <!-- Messages -->
+        <div id="chatMessages" class="flex-1 overflow-y-auto p-6">
+            <div id="emptyState" class="h-full flex flex-col items-center justify-center text-center">
+                <div class="w-16 h-16 bg-dark-700 rounded-2xl flex items-center justify-center mb-4">
+                    <svg class="w-8 h-8 text-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                            d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" />
+                    </svg>
+                </div>
+                <h2 class="text-xl font-semibold text-white mb-2">Document Assistant</h2>
+                <p class="text-gray-400 text-sm max-w-md">
+                    모델을 로드하고, 문서를 인덱싱한 후<br>컬렉션을 선택하면 질문할 수 있습니다.
+                </p>
+            </div>
+        </div>
+
+        <!-- Input Area -->
+        <div class="p-6 bg-dark-900">
+            <div class="max-w-4xl mx-auto relative">
+                <!-- Preview area -->
+                <div id="attachmentPreview" class="hidden flex gap-2 mb-3 flex-wrap px-1"></div>
+
+                <!-- Unified Input Bar -->
+                <div
+                    class="bg-dark-800 border border-dark-600 rounded-[28px] flex items-end p-2 shadow-lg transition-all duration-200 focus-within:ring-2 focus-within:ring-primary/50 focus-within:border-primary focus-within:bg-dark-700/80 backdrop-blur-md">
+
+                    <input type="file" id="fileInput" class="hidden" accept="image/*,.pdf,.docx,.txt,.md"
+                        onchange="handleFileSelect(event)" multiple>
+
+                    <!-- Attach Button -->
+                    <button id="attachBtn" onclick="document.getElementById('fileInput').click()"
+                        class="p-3 mb-0.5 ml-1 text-gray-400 hover:text-white rounded-full hover:bg-dark-600 transition-colors flex-shrink-0 cursor-not-allowed disabled:opacity-30"
+                        title="비전 모델에서만 사용 가능" disabled>
+                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" />
+                        </svg>
+                    </button>
+
+                    <!-- Textarea -->
+                    <textarea id="chatInput" rows="1"
+                        class="chat-input flex-1 bg-transparent border-none text-gray-100 placeholder-gray-500 px-4 py-3.5 focus:ring-0 focus:outline-none resize-none min-h-[52px] max-h-[200px] leading-relaxed"
+                        placeholder="무엇이든 물어보세요..." onkeydown="handleInputKeydown(event)"
+                        oninput="autoResize(this)"></textarea>
+
+                    <!-- Send Button -->
+                    <button id="sendBtn" onclick="sendChat()"
+                        class="p-3 mb-0.5 mr-1 bg-primary hover:bg-blue-500 text-white rounded-full transition-all flex-shrink-0 disabled:bg-dark-600 disabled:text-gray-500 disabled:cursor-not-allowed shadow-lg hover:shadow-primary/30 active:scale-95">
+                        <svg class="w-5 h-5 ml-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
+                        </svg>
+                    </button>
+                </div>
+
+                <div class="text-center mt-3 text-xs text-gray-500 font-medium tracking-wide">
+                    Document Assistant는 실수를 할 수 있습니다.
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <!-- Model Manager Modal -->
+    <div id="modelModal" class="hidden fixed inset-0 bg-black/50 z-50 flex items-center justify-center">
+        <div
+            class="bg-dark-800 rounded-2xl w-[600px] max-h-[80vh] overflow-hidden flex flex-col border border-dark-700">
+            <div class="p-4 border-b border-dark-700 flex justify-between items-center">
+                <h3 class="font-semibold text-white">모델 관리</h3>
+                <button onclick="closeModelManager()" class="text-gray-400 hover:text-white">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                            d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                </button>
+            </div>
+            <div class="p-4 border-b border-dark-700">
+                <input type="text" id="modelSearchInput" placeholder="모델 검색..."
+                    class="w-full px-3 py-2 bg-dark-700 border border-dark-600 rounded-lg text-sm text-gray-200 placeholder-gray-500 focus:outline-none focus:border-primary"
+                    onkeyup="searchModels(this.value)">
+            </div>
+            <div id="modelList" class="flex-1 overflow-y-auto p-4 max-h-[400px]"></div>
+            <div class="p-3 border-t border-dark-700 bg-dark-900 text-xs text-gray-500 text-center">
+                [Vision] 모델: 이미지 분석 가능
+            </div>
+        </div>
+    </div>
+
+    <!-- Login Modal -->
+    <div id="loginModal"
+        class="hidden fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center">
+        <div
+            class="bg-gradient-to-br from-dark-800 to-dark-900 rounded-2xl w-[400px] overflow-hidden border border-dark-600 shadow-2xl">
+            <div
+                class="p-6 border-b border-dark-700 flex justify-between items-center bg-gradient-to-r from-blue-600/20 to-purple-600/20">
+                <h3 class="font-bold text-white text-lg">로그인</h3>
+                <button onclick="closeLoginModal()" class="text-gray-400 hover:text-white transition-colors">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                            d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                </button>
+            </div>
+
+            <!-- Tabs -->
+            <div class="flex border-b border-dark-700">
+                <button onclick="switchAuthTab('login')" id="loginTab"
+                    class="flex-1 py-3 text-sm font-medium text-white bg-dark-700/50 border-b-2 border-primary">로그인</button>
+                <button onclick="switchAuthTab('register')" id="registerTab"
+                    class="flex-1 py-3 text-sm font-medium text-gray-400 hover:text-white transition-colors">회원가입</button>
+            </div>
+
+            <!-- Login Form -->
+            <div id="loginForm" class="p-6 space-y-4">
+                <div>
+                    <label class="block text-xs font-medium text-gray-400 mb-1">아이디</label>
+                    <input type="text" id="loginUsername" placeholder="사용자명"
+                        class="w-full px-4 py-3 bg-dark-700 border border-dark-600 rounded-xl text-sm text-gray-200 placeholder-gray-500 focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary/50 transition-all">
+                </div>
+                <div>
+                    <label class="block text-xs font-medium text-gray-400 mb-1">비밀번호</label>
+                    <input type="password" id="loginPassword" placeholder="비밀번호"
+                        class="w-full px-4 py-3 bg-dark-700 border border-dark-600 rounded-xl text-sm text-gray-200 placeholder-gray-500 focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary/50 transition-all">
+                </div>
+                <div class="flex items-center gap-2">
+                    <input type="checkbox" id="autoLogin"
+                        class="w-4 h-4 rounded border-dark-600 bg-dark-700 text-primary focus:ring-primary">
+                    <label for="autoLogin" class="text-xs text-gray-400">자동 로그인</label>
+                </div>
+                <div id="loginError" class="hidden text-red-400 text-xs"></div>
+                <button onclick="doLogin()"
+                    class="w-full py-3 bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-500 hover:to-purple-500 text-white rounded-xl font-medium transition-all shadow-lg hover:shadow-blue-500/25">
+                    로그인
+                </button>
+            </div>
+
+            <!-- Register Form -->
+            <div id="registerForm" class="hidden p-6 space-y-4">
+                <div>
+                    <label class="block text-xs font-medium text-gray-400 mb-1">아이디</label>
+                    <input type="text" id="regUsername" placeholder="사용자명 (영문, 숫자)"
+                        class="w-full px-4 py-3 bg-dark-700 border border-dark-600 rounded-xl text-sm text-gray-200 placeholder-gray-500 focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary/50 transition-all">
+                </div>
+                <div>
+                    <label class="block text-xs font-medium text-gray-400 mb-1">비밀번호</label>
+                    <input type="password" id="regPassword" placeholder="비밀번호"
+                        class="w-full px-4 py-3 bg-dark-700 border border-dark-600 rounded-xl text-sm text-gray-200 placeholder-gray-500 focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary/50 transition-all">
+                </div>
+                <div>
+                    <label class="block text-xs font-medium text-gray-400 mb-1">비밀번호 확인</label>
+                    <input type="password" id="regPasswordConfirm" placeholder="비밀번호 확인"
+                        class="w-full px-4 py-3 bg-dark-700 border border-dark-600 rounded-xl text-sm text-gray-200 placeholder-gray-500 focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary/50 transition-all">
+                </div>
+                <div id="registerError" class="hidden text-red-400 text-xs"></div>
+                <button onclick="doRegister()"
+                    class="w-full py-3 bg-gradient-to-r from-green-600 to-teal-600 hover:from-green-500 hover:to-teal-500 text-white rounded-xl font-medium transition-all shadow-lg hover:shadow-green-500/25">
+                    회원가입
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let currentPath = '';
+        let modelLoaded = false;
+        let ragReady = false;
+        let currentSessionId = null;
+        let attachments = [];
+        let abortController = null;
+        let lastFailedQuestion = null;
+
+        document.addEventListener('DOMContentLoaded', () => {
+            browsePath('');
+            refreshSessions();
+        });
+
+        // Input auto-resize (max 6 lines)
+        // Input auto-resize (max 8 lines)
+        function autoResize(el) {
+            el.style.height = 'auto';
+            const minHeight = 52; // CSS default
+
+            if (el.value === '') {
+                el.style.height = 'auto'; // Let CSS handle min-height
+                return;
+            }
+
+            const lineHeight = 24;
+            const maxLines = 8;
+            const newHeight = Math.min(el.scrollHeight, lineHeight * maxLines);
+
+            // Ensure min height
+            el.style.height = Math.max(newHeight, minHeight) + 'px';
+        }
+
+        function handleInputKeydown(e) {
+            if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                sendChat();
+            }
+        }
+
+        async function browsePath(path) {
+            try {
+                const res = await fetch('/api/browse?path=' + encodeURIComponent(path));
+                const data = await res.json();
+                if (data.error) return;
+                currentPath = data.current;
+                document.getElementById('folderPath').value = currentPath;
+                document.getElementById('folderList').innerHTML = data.items.map(item => {
+                    // 권한 확인 (API에서 managed 리소스 여부를 can_delete로 전달함)
+                    const showActions = item.can_delete;
+
+                    const deleteBtn = showActions ?
+                        `<button onclick="event.stopPropagation(); deleteItem('${item.path.replace(/\\/g, '\\\\')}', '${item.name}')" 
+                            class="p-1.5 hover:bg-red-500/20 rounded text-gray-500 hover:text-red-400 transition-colors ml-1 flex-shrink-0" title="삭제">
+                            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
+                        </button>` : '';
+
+                    const renameBtn = showActions ?
+                        `<button onclick="event.stopPropagation(); renameItem('${item.path.replace(/\\/g, '\\\\')}', '${item.name}')" 
+                            class="p-1.5 hover:bg-blue-500/20 rounded text-gray-500 hover:text-blue-400 transition-colors ml-1 flex-shrink-0" title="이름 변경">
+                            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"/></svg>
+                        </button>` : '';
+
+                    if (item.is_dir) {
+                        return `<div class="px-3 py-2 hover:bg-dark-600 cursor-pointer text-sm text-gray-300 flex items-center gap-2 border-b border-dark-600 last:border-0" onclick="browsePath('${item.path.replace(/\\/g, '\\\\')}')">
+                            <svg class="w-4 h-4 text-yellow-500 flex-shrink-0" fill="currentColor" viewBox="0 0 24 24"><path d="M10 4H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2h-8l-2-2z"/></svg>
+                            <span class="truncate flex-1">${item.name}</span>
+                            ${renameBtn}
+                            ${deleteBtn}
+                        </div>`;
+                    } else {
+                        return `<div class="px-3 py-2 hover:bg-dark-600 cursor-default text-sm text-gray-400 flex items-center gap-2 border-b border-dark-600 last:border-0">
+                            <svg class="w-4 h-4 text-blue-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
+                            <span class="truncate flex-1">${item.name}</span>
+                            <span class="text-xs text-gray-600 whitespace-nowrap ml-2">${formatSize(item.size)}</span>
+                            ${renameBtn}
+                            ${deleteBtn}
+                        </div>`;
+                    }
+                }).join('') || '<div class="p-3 text-center text-gray-500 text-xs">빈 폴더</div>';
+            } catch (e) { console.error(e); }
+        }
+
+        function formatSize(bytes) {
+            if (bytes === 0) return '0 B';
+            const k = 1024;
+            const sizes = ['B', 'KB', 'MB', 'GB'];
+            const i = Math.floor(Math.log(bytes) / Math.log(k));
+            return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
+        }
+
+        async function createFolder() {
+            if (!currentPath) {
+                alert('폴더를 생성할 경로로 이동해주세요.');
+                return;
+            }
+            const name = prompt('새 폴더 이름:');
+            if (!name) return;
+
+            try {
+                const form = new FormData();
+                form.append('path', currentPath);
+                form.append('name', name);
+                const res = await fetch('/api/mkdir', { method: 'POST', body: form });
+                const data = await res.json();
+                if (data.success) {
+                    browsePath(currentPath);
+                } else {
+                    alert('폴더 생성 실패: ' + data.error);
+                }
+            } catch (e) {
+                alert('오류: ' + e.message);
+            }
+        }
+
+        function goBack() {
+            if (!currentPath) return;
+            let parent = currentPath.replace(/[\\/][^\\/]+[\\/]?$/, '');
+            if (parent.match(/^[A-Za-z]:$/)) parent += '/';
+            if (!parent || parent === currentPath) browsePath('');
+            else browsePath(parent);
+        }
+
+        async function loadModel() {
+            const name = document.getElementById('modelSelect').value;
+            if (!name) return;
+
+            const status = document.getElementById('modelStatus');
+            status.className = 'text-xs text-yellow-500 px-1';
+            status.textContent = '로딩 중... (1-2분)';
+
+            try {
+                const form = new FormData();
+                form.append('model_name', name);
+                const res = await fetch('/api/load-model', { method: 'POST', body: form });
+                const data = await res.json();
+
+                if (data.error) {
+                    status.className = 'text-xs text-red-400 px-1';
+                    status.textContent = data.error;
+                } else {
+                    status.className = 'text-xs text-green-400 px-1';
+                    status.textContent = '로드 완료!';
+                    modelLoaded = true;
+                    updateAttachButton();
+                    trySetupRag();
+                }
+            } catch (e) {
+                status.className = 'text-xs text-red-400 px-1';
+                status.textContent = e.message;
+            }
+        }
+
+        async function startIndexing() {
+            const folder = document.getElementById('folderPath').value;
+            if (!folder) { alert('폴더를 선택하세요'); return; }
+
+            const status = document.getElementById('indexStatus');
+            const btn = document.getElementById('indexBtn');
+
+            status.className = 'text-xs text-yellow-500 mt-2 px-1';
+            status.textContent = '인덱싱 중...';
+            btn.disabled = true;
+
+            try {
+                const form = new FormData();
+                form.append('folder_path', folder);
+                form.append('collection_name', '');
+
+                const res = await fetch('/api/index', { method: 'POST', body: form });
+                const data = await res.json();
+
+                btn.disabled = false;
+
+                if (data.error) {
+                    status.className = 'text-xs text-red-400 mt-2 px-1';
+                    status.textContent = data.error;
+                } else {
+                    status.className = 'text-xs text-green-400 mt-2 px-1';
+                    const chunks = data.chunks !== undefined ? data.chunks : 0;
+                    const deletedChunks = data.deleted_chunks !== undefined ? data.deleted_chunks : 0;
+                    const collName = data.collection || 'Update';
+
+                    let countInfo = [];
+                    if (chunks > 0) countInfo.push(`+${chunks}`);
+                    if (deletedChunks > 0) countInfo.push(`-${deletedChunks}`);
+                    if (countInfo.length === 0) countInfo.push('변경없음');
+
+                    status.textContent = `완료! ${collName} (${countInfo.join(' / ')} 청크)`;
+                    refreshCollections();
+                }
+            } catch (e) {
+                btn.disabled = false;
+                status.className = 'text-xs text-red-400 mt-2 px-1';
+                status.textContent = e.message;
+            }
+        }
+
+        async function refreshCollections() {
+            try {
+                const res = await fetch('/api/collections');
+                const data = await res.json();
+                const select = document.getElementById('collectionSelect');
+                select.innerHTML = '<option value="">컬렉션 선택</option>' +
+                    data.collections.map(c => `<option value="${c.name}">${c.name} (${c.count})</option>`).join('');
+            } catch (e) { }
+        }
+
+        function selectCollection() {
+            trySetupRag();
+        }
+
+        async function trySetupRag() {
+            if (!modelLoaded) {
+                document.getElementById('ragStatus').textContent = '모델 로드 필요';
+                return;
+            }
+            const collection = document.getElementById('collectionSelect').value;
+            if (!collection) {
+                document.getElementById('ragStatus').textContent = '컬렉션 선택 필요';
+                return;
+            }
+
+            const status = document.getElementById('ragStatus');
+            status.className = 'text-xs text-yellow-500 px-1';
+            status.textContent = 'RAG 설정 중...';
+
+            try {
+                const form = new FormData();
+                form.append('collection_name', collection);
+                const res = await fetch('/api/setup-rag', { method: 'POST', body: form });
+                const data = await res.json();
+
+                if (data.error) {
+                    status.className = 'text-xs text-red-400 px-1';
+                    status.textContent = data.error;
+                } else {
+                    status.className = 'text-xs text-green-400 px-1';
+                    status.textContent = '준비 완료!';
+                    ragReady = true;
+                }
+            } catch (e) {
+                status.className = 'text-xs text-red-400 px-1';
+                status.textContent = e.message;
+            }
+        }
+
+        async function sendChat() {
+            const btn = document.getElementById('sendBtn');
+
+            if (abortController) {
+                abortController.abort();
+                abortController = null;
+                return;
+            }
+
+            const input = document.getElementById('chatInput');
+            const question = input.value.trim();
+            if (!question) return;
+
+            if (!ragReady) {
+                alert('모델과 컬렉션을 먼저 설정하세요');
+                return;
+            }
+
+            const messages = document.getElementById('chatMessages');
+            const emptyState = document.getElementById('emptyState');
+            if (emptyState) emptyState.remove();
+
+            // User message
+            messages.innerHTML += `
+                <div class="flex justify-end mb-4">
+                    <div class="max-w-2xl bg-primary text-white px-4 py-3 rounded-2xl rounded-br-md">
+                        ${escapeHtml(question)}
+                    </div>
+                </div>`;
+
+            // AI response bubble
+            const responseId = 'response-' + Date.now();
+            messages.innerHTML += `
+                <div class="flex mb-4 group" id="${responseId}">
+                    <div class="w-8 h-8 bg-green-500 rounded-lg flex items-center justify-center text-white text-xs font-semibold mr-3 flex-shrink-0">AI</div>
+                    <div class="max-w-2xl bg-dark-700 text-gray-200 px-4 py-3 rounded-2xl rounded-bl-md message-content relative group">
+                        <div class="response-text"></div>
+                        <span class="cursor text-primary">|</span>
+                        
+                        <button onclick="copyToClipboard(this)" 
+                            class="absolute top-2 right-2 p-1.5 text-gray-400 hover:text-white bg-dark-800/50 hover:bg-dark-600 rounded-lg opacity-0 group-hover:opacity-100 transition-all duration-200"
+                            title="복사">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m0 0h2a2 2 0 012 2v3m2 4H10m0 0l3-3m-3 3l3 3"/></svg>
+                        </button>
+                    </div>
+                </div>`;
+
+            input.value = '';
+            input.style.height = '52px'; // Reset to min-height
+            messages.scrollTop = messages.scrollHeight;
+
+            // Change button to stop
+            btn.innerHTML = '<svg class="w-5 h-5" fill="currentColor" viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12"/></svg>';
+            abortController = new AbortController();
+
+            try {
+                const form = new FormData();
+                form.append('question', question);
+                form.append('attachments', JSON.stringify(attachments));
+
+                const options = {
+                    k: document.getElementById('kSlider')?.value || 7,
+                    num_predict: document.getElementById('tokenSlider')?.value || 2048,
+                    temperature: document.getElementById('tempSlider')?.value || 0.3,
+                    system_prompt: document.getElementById('systemPrompt')?.value || ''
+                };
+                form.append('options', JSON.stringify(options));
+
+                attachments = [];
+                updateAttachmentPreview();
+
+                const response = await fetch('/api/chat', {
+                    method: 'POST',
+                    body: form,
+                    signal: abortController.signal
+                });
+
+                const reader = response.body.getReader();
+                const decoder = new TextDecoder();
+
+                const responseEl = document.getElementById(responseId);
+                const textEl = responseEl.querySelector('.response-text');
+                const cursorEl = responseEl.querySelector('.cursor');
+                let sources = [];
+                let fullText = '';
+
+                while (true) {
+                    const { done, value } = await reader.read();
+                    if (done) break;
+
+                    const chunk = decoder.decode(value);
+                    const lines = chunk.split('\n');
+
+                    for (const line of lines) {
+                        if (line.startsWith('data: ')) {
+                            try {
+                                const data = JSON.parse(line.slice(6));
+
+                                if (data.type === 'token') {
+                                    fullText += data.data;
+                                    textEl.innerHTML = escapeHtml(fullText);
+                                    messages.scrollTop = messages.scrollHeight;
+                                }
+                                else if (data.type === 'sources') {
+                                    sources = data.data;
+                                }
+                                else if (data.type === 'done') {
+                                    cursorEl.remove();
+                                    textEl.innerHTML = renderMarkdown(fullText);
+
+                                    if (sources.length > 0) {
+                                        const sourceLinks = sources.map(s =>
+                                            `<span class="text-primary hover:underline cursor-pointer" onclick="openFileFolder('${s.path.replace(/\\/g, '\\\\')}')" title="${s.path}">${s.filename}</span>`
+                                        ).join(', ');
+                                        textEl.innerHTML += `<div class="mt-3 pt-3 border-t border-dark-600 text-xs text-gray-400">참고: ${sourceLinks}</div>`;
+                                    }
+                                    refreshSessions();
+                                    lastFailedQuestion = null;
+                                }
+                                else if (data.type === 'error') {
+                                    textEl.innerHTML = `
+                                        <span class="text-red-400">${escapeHtml(data.data)}</span>
+                                        <button onclick="retryLastMessage()" class="ml-2 px-3 py-1 bg-red-500/20 text-red-400 rounded hover:bg-red-500/30 text-sm">
+                                            다시 보내기
+                                        </button>`;
+                                    cursorEl.remove();
+                                    lastFailedQuestion = question;
+                                }
+                            } catch (e) { }
+                        }
+                    }
+                }
+
+            } catch (e) {
+                if (e.name === 'AbortError') {
+                    const responseEl = document.getElementById(responseId);
+                    if (responseEl) {
+                        responseEl.querySelector('.cursor')?.remove();
+                        const textEl = responseEl.querySelector('.response-text');
+                        textEl.innerHTML += '<span class="text-gray-500 text-sm ml-2">(중단됨)</span>';
+                    }
+                } else {
+                    document.getElementById(responseId)?.remove();
+                    messages.innerHTML += `
+                        <div class="flex mb-4">
+                            <div class="w-8 h-8 bg-red-500 rounded-lg flex items-center justify-center text-white text-xs font-semibold mr-3 flex-shrink-0">!</div>
+                            <div class="max-w-2xl bg-red-500/20 text-red-400 px-4 py-3 rounded-2xl rounded-bl-md">
+                                ${e.message}
+                                <button onclick="retryLastMessage()" class="ml-2 px-3 py-1 bg-red-500/20 text-red-400 rounded hover:bg-red-500/30 text-sm">
+                                    다시 보내기
+                                </button>
+                            </div>
+                        </div>`;
+                    lastFailedQuestion = question;
+                }
+            } finally {
+                abortController = null;
+                btn.innerHTML = '<svg class="w-5 h-5" fill="currentColor" viewBox="0 0 24 24"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg>';
+                messages.scrollTop = messages.scrollHeight;
+            }
+        }
+
+        function retryLastMessage() {
+            if (lastFailedQuestion) {
+                document.getElementById('chatInput').value = lastFailedQuestion;
+                sendChat();
+            }
+        }
+
+        function escapeHtml(text) {
+            if (!text) return '';
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML.replace(/"/g, '&quot;').replace(/'/g, '&#39;').replace(/\n/g, '<br>');
+        }
+
+        function renderMarkdown(text) {
+            if (typeof marked !== 'undefined') {
+                return marked.parse(text);
+            }
+            return escapeHtml(text);
+        }
+
+        async function clearChat() {
+            try {
+                await fetch('/api/clear-chat', { method: 'POST' });
+                currentSessionId = null;
+                const messages = document.getElementById('chatMessages');
+                messages.innerHTML = `
+                    <div id="emptyState" class="h-full flex flex-col items-center justify-center text-center">
+                        <div class="w-16 h-16 bg-dark-700 rounded-2xl flex items-center justify-center mb-4">
+                            <svg class="w-8 h-8 text-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z"/>
+                            </svg>
+                        </div>
+                        <h2 class="text-xl font-semibold text-white mb-2">새 대화</h2>
+                        <p class="text-gray-400 text-sm">질문을 입력하세요.</p>
+                    </div>`;
+            } catch (e) {
+                console.error(e);
+            }
+        }
+
+        // Model Manager
+        function openModelManager() {
+            document.getElementById('modelModal').classList.remove('hidden');
+            document.getElementById('modelModal').classList.add('flex');
+            searchModels('');
+        }
+
+        function closeModelManager() {
+            document.getElementById('modelModal').classList.add('hidden');
+            document.getElementById('modelModal').classList.remove('flex');
+        }
+
+        async function searchModels(query) {
+            const list = document.getElementById('modelList');
+            list.innerHTML = '<div class="text-center py-8 text-gray-500">검색 중...</div>';
+
+            try {
+                const res = await fetch('/api/models/search?q=' + encodeURIComponent(query));
+                const data = await res.json();
+
+                if (!data.models || data.models.length === 0) {
+                    list.innerHTML = '<div class="text-center py-8 text-gray-500">검색 결과 없음</div>';
+                    return;
+                }
+
+                list.innerHTML = data.models.map(m => `
+                    <div class="flex items-center p-3 border-b border-dark-600 last:border-0">
+                        <div class="flex-1 min-w-0">
+                            <div class="font-medium text-white text-sm truncate">${m.name} ${m.vision ? '<span class="text-purple-400">[Vision]</span>' : ''}</div>
+                            <div class="text-xs text-gray-500 truncate">${m.description || ''} (${m.size})</div>
+                        </div>
+                        ${m.installed
+                        ? `<button onclick="deleteModel('${m.name}')" class="px-3 py-1.5 bg-red-500/20 text-red-400 rounded text-xs hover:bg-red-500/30">삭제</button>`
+                        : `<button onclick="pullModel('${m.name}')" class="px-3 py-1.5 bg-primary text-white rounded text-xs hover:bg-blue-600" id="pull-${m.name.replace(/[:.]/g, '_')}">다운로드</button>`
+                    }
+                    </div>
+                `).join('');
+            } catch (e) {
+                list.innerHTML = '<div class="text-center py-8 text-red-400">오류: ' + e.message + '</div>';
+            }
+        }
+
+        async function pullModel(modelName) {
+            const btnId = 'pull-' + modelName.replace(/[:.]/g, '_');
+            const btn = document.getElementById(btnId);
+            if (btn) {
+                btn.disabled = true;
+                btn.textContent = '다운로드 중...';
+            }
+
+            try {
+                const form = new FormData();
+                form.append('model_name', modelName);
+
+                const response = await fetch('/api/models/pull', { method: 'POST', body: form });
+                const reader = response.body.getReader();
+                const decoder = new TextDecoder();
+
+                while (true) {
+                    const { done, value } = await reader.read();
+                    if (done) break;
+
+                    const chunk = decoder.decode(value);
+                    const lines = chunk.split('\n');
+
+                    for (const line of lines) {
+                        if (line.startsWith('data: ')) {
+                            try {
+                                const data = JSON.parse(line.slice(6));
+                                if (btn) {
+                                    if (data.progress > 0) {
+                                        btn.textContent = data.progress + '%';
+                                    } else {
+                                        btn.textContent = data.status || '준비 중...';
+                                    }
+                                }
+                                if (data.status === 'success' || data.status === 'error') {
+                                    break;
+                                }
+                            } catch (e) { }
+                        }
+                    }
+                }
+
+                if (btn) {
+                    btn.textContent = '완료!';
+                    btn.className = 'px-3 py-1.5 bg-green-500 text-white rounded text-xs';
+                }
+
+                await refreshModelSelect();
+                setTimeout(() => searchModels(document.getElementById('modelSearchInput').value), 500);
+
+            } catch (e) {
+                if (btn) {
+                    btn.textContent = '실패';
+                    btn.className = 'px-3 py-1.5 bg-red-500 text-white rounded text-xs';
+                }
+            }
+        }
+
+        async function deleteModel(modelName) {
+            if (!confirm(`"${modelName}" 모델을 삭제하시겠습니까?`)) return;
+
+            try {
+                const res = await fetch('/api/models/' + encodeURIComponent(modelName), { method: 'DELETE' });
+                if (res.ok) {
+                    await refreshModelSelect();
+                    searchModels(document.getElementById('modelSearchInput').value);
+                } else {
+                    alert('삭제 실패');
+                }
+            } catch (e) {
+                alert('오류: ' + e.message);
+            }
+        }
+
+        async function refreshModelSelect() {
+            try {
+                const res = await fetch('/api/models/installed');
+                const data = await res.json();
+
+                const select = document.getElementById('modelSelect');
+                const currentValue = select.value;
+
+                select.innerHTML = data.models.length > 0
+                    ? '<option value="">모델 선택</option>'
+                    : '<option value="">설치된 모델 없음</option>';
+
+                data.models.forEach(m => {
+                    const opt = document.createElement('option');
+                    opt.value = m.name;
+                    opt.textContent = `${m.name} (${m.size})${m.is_vision ? ' [Vision]' : ''}`;
+                    opt.dataset.vision = m.is_vision;
+                    select.appendChild(opt);
+                });
+
+                if (currentValue) select.value = currentValue;
+            } catch (e) {
+                console.error(e);
+            }
+        }
+
+        // Session Management
+        async function refreshSessions() {
+            const list = document.getElementById('sessionList');
+            try {
+                const res = await fetch('/api/sessions');
+                const data = await res.json();
+
+                if (!data.sessions || data.sessions.length === 0) {
+                    list.innerHTML = '<div class="p-3 text-center text-gray-500 text-xs">대화 기록 없음</div>';
+                    return;
+                }
+
+                currentSessionId = data.current_session_id;
+
+                list.innerHTML = data.sessions.map(s => `
+                    <div class="px-3 py-2 hover:bg-dark-600 cursor-pointer border-b border-dark-600 last:border-0 flex items-center gap-2 ${s.id === currentSessionId ? 'bg-dark-600' : ''}"
+                         onclick="loadSession('${s.id}')">
+                        <div class="flex-1 min-w-0">
+                            <div class="text-sm text-gray-200 truncate">${s.title}</div>
+                            <div class="text-xs text-gray-500">${s.updated_at}</div>
+                        </div>
+                        <button onclick="event.stopPropagation();deleteSessionItem('${s.id}')" 
+                                class="text-gray-500 hover:text-red-400 text-xs p-1">
+                            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+                            </svg>
+                        </button>
+                    </div>
+                `).join('');
+            } catch (e) {
+                list.innerHTML = '<div class="p-3 text-center text-red-400 text-xs">오류</div>';
+            }
+        }
+
+        async function loadSession(sessionId) {
+            try {
+                const res = await fetch('/api/sessions/' + sessionId);
+                const data = await res.json();
+
+                if (!data.session) return;
+
+                currentSessionId = sessionId;
+
+                const messages = document.getElementById('chatMessages');
+                messages.innerHTML = '';
+
+                for (const m of data.messages) {
+                    if (m.role === 'user') {
+                        messages.innerHTML += `
+                            <div class="flex justify-end mb-4">
+                                <div class="max-w-2xl bg-primary text-white px-4 py-3 rounded-2xl rounded-br-md">
+                                    ${escapeHtml(m.content)}
+                                </div>
+                            </div>`;
+                    } else {
+                        let sourcesHtml = '';
+                        if (m.sources && m.sources.length > 0) {
+                            const sourceLinks = m.sources.map(s =>
+                                `<span class="text-primary hover:underline cursor-pointer" onclick="openFileFolder('${s.path.replace(/\\/g, '\\\\')}')" title="${s.path}">${s.filename}</span>`
+                            ).join(', ');
+                            sourcesHtml = `<div class="mt-3 pt-3 border-t border-dark-600 text-xs text-gray-400">참고: ${sourceLinks}</div>`;
+                        }
+
+                        messages.innerHTML += `
+                            <div class="flex mb-4 group">
+                                <div class="w-8 h-8 bg-green-500 rounded-lg flex items-center justify-center text-white text-xs font-semibold mr-3 flex-shrink-0">AI</div>
+                                <div class="max-w-2xl bg-dark-700 text-gray-200 px-4 py-3 rounded-2xl rounded-bl-md message-content relative group">
+                                    <div class="response-text">${renderMarkdown(m.content)}</div>
+                                    ${sourcesHtml}
+                                    <button onclick="copyToClipboard(this)" 
+                                        class="absolute top-2 right-2 p-1.5 text-gray-400 hover:text-white bg-dark-800/50 hover:bg-dark-600 rounded-lg opacity-0 group-hover:opacity-100 transition-all duration-200"
+                                        title="복사">
+                                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m0 0h2a2 2 0 012 2v3m2 4H10m0 0l3-3m-3 3l3 3"/></svg>
+                                    </button>
+                                </div>
+                            </div>`;
+                    }
+                }
+
+                messages.scrollTop = messages.scrollHeight;
+                refreshSessions();
+
+            } catch (e) {
+                console.error(e);
+            }
+        }
+
+        async function deleteSessionItem(sessionId) {
+            if (!confirm('이 대화를 삭제하시겠습니까?')) return;
+            try {
+                await fetch('/api/sessions/' + sessionId, { method: 'DELETE' });
+                if (sessionId === currentSessionId) {
+                    currentSessionId = null;
+                    clearChat();
+                }
+                refreshSessions();
+            } catch (e) {
+                console.error(e);
+            }
+        }
+
+        // File Attachment
+        async function handleFileSelect(event) {
+            const files = event.target.files;
+
+            for (const file of files) {
+                if (file.type.startsWith('image/')) {
+                    const reader = new FileReader();
+                    reader.onload = (e) => {
+                        const base64 = e.target.result.split(',')[1];
+                        attachments.push({
+                            type: 'image',
+                            name: file.name,
+                            data: base64,
+                            preview: e.target.result
+                        });
+                        updateAttachmentPreview();
+                    };
+                    reader.readAsDataURL(file);
+                } else {
+                    const formData = new FormData();
+                    formData.append('file', file);
+
+                    try {
+                        const res = await fetch('/api/extract-text', { method: 'POST', body: formData });
+                        const data = await res.json();
+                        if (data.text) {
+                            attachments.push({
+                                type: 'document',
+                                name: file.name,
+                                data: data.text
+                            });
+                            updateAttachmentPreview();
+                        }
+                    } catch (e) {
+                        console.error('파일 처리 실패:', e);
+                    }
+                }
+            }
+
+            event.target.value = '';
+        }
+
+        function updateAttachmentPreview() {
+            const preview = document.getElementById('attachmentPreview');
+            if (attachments.length === 0) {
+                preview.classList.add('hidden');
+                return;
+            }
+
+            preview.classList.remove('hidden');
+            preview.innerHTML = attachments.map((a, i) => {
+                if (a.type === 'image') {
+                    return `<div class="relative">
+                        <img src="${a.preview}" class="h-12 rounded border border-dark-600">
+                        <button onclick="removeAttachment(${i})" class="absolute -top-1 -right-1 w-4 h-4 bg-red-500 text-white rounded-full text-xs flex items-center justify-center">x</button>
+                    </div>`;
+                } else {
+                    return `<div class="relative px-3 py-2 bg-dark-700 border border-dark-600 rounded text-xs text-gray-300">
+                        ${a.name}
+                        <button onclick="removeAttachment(${i})" class="absolute -top-1 -right-1 w-4 h-4 bg-red-500 text-white rounded-full text-xs flex items-center justify-center">x</button>
+                    </div>`;
+                }
+            }).join('');
+        }
+
+        function removeAttachment(index) {
+            attachments.splice(index, 1);
+            updateAttachmentPreview();
+        }
+
+        function getCurrentModelIsVision() {
+            const select = document.getElementById('modelSelect');
+            const option = select.options[select.selectedIndex];
+            return option && option.dataset.vision === 'true';
+        }
+
+        function updateAttachButton() {
+            const btn = document.getElementById('attachBtn');
+            const isVision = getCurrentModelIsVision();
+            if (btn) {
+                btn.disabled = !isVision;
+                if (isVision) {
+                    btn.className = 'p-3 bg-primary hover:bg-blue-600 text-white rounded-xl transition-all cursor-pointer';
+                    btn.title = '파일 첨부';
+                } else {
+                    btn.className = 'p-3 bg-dark-700 border border-dark-600 rounded-xl text-gray-500 cursor-not-allowed transition-all';
+                    btn.title = '비전 모델에서만 사용 가능';
+                }
+            }
+        }
+
+        async function openFileFolder(path) {
+            try {
+                const form = new FormData();
+                form.append('path', path);
+                const res = await fetch('/api/open-folder', { method: 'POST', body: form });
+                const data = await res.json();
+                if (data.error) {
+                    alert('폴더 열기 실패: ' + data.error);
+                }
+            } catch (e) {
+                console.error(e);
+            }
+        }
+
+        function toggleAdvancedSettings() {
+            const panel = document.getElementById('advancedSettings');
+            const arrow = document.getElementById('advancedArrow');
+            if (panel.classList.contains('hidden')) {
+                panel.classList.remove('hidden');
+                arrow.textContent = '▲';
+            } else {
+                panel.classList.add('hidden');
+                arrow.textContent = '▼';
+            }
+        }
+
+        async function renameCollection() {
+            const select = document.getElementById('collectionSelect');
+            const oldName = select.value;
+            if (!oldName) {
+                alert('이름을 변경할 컬렉션을 선택하세요.');
+                return;
+            }
+
+            const newName = prompt('새 컬렉션 이름을 입력하세요 (영문, 숫자, _만 허용):', oldName);
+            if (!newName || newName === oldName) return;
+
+            try {
+                const form = new FormData();
+                form.append('old_name', oldName);
+                form.append('new_name', newName);
+
+                const res = await fetch('/api/collections/rename', { method: 'POST', body: form });
+                const data = await res.json();
+
+                if (data.error) {
+                    alert('오류: ' + data.error);
+                } else {
+                    alert('이름이 변경되었습니다!');
+                    location.reload();
+                }
+            } catch (e) {
+                alert('오류 발생: ' + e.message);
+            }
+        }
+
+        async function logout() {
+            try {
+                await fetch('/api/logout', { method: 'POST' });
+                location.reload();
+            } catch (e) {
+                console.error(e);
+            }
+        }
+
+        async function deleteItem(path, name) {
+            if (!confirm(`'${name}'을(를) 정말 삭제하시겠습니까?\n삭제된 항목은 복구할 수 없습니다.`)) return;
+
+            try {
+                const form = new FormData();
+                form.append('path', path);
+                const res = await fetch('/api/delete-item', { method: 'POST', body: form });
+                const data = await res.json();
+
+                if (data.success) {
+                    browsePath(currentPath); // 현재 폴더 새로고침
+                } else {
+                    alert('삭제 실패: ' + data.error);
+                }
+            } catch (e) {
+                alert('오류 발생: ' + e.message);
+            }
+        }
+
+        async function renameItem(path, oldName) {
+            const newName = prompt(`'${oldName}'의 새 이름을 입력하세요:`, oldName);
+            if (!newName || newName === oldName) return;
+
+            try {
+                const form = new FormData();
+                form.append('path', path);
+                form.append('new_name', newName);
+
+                const res = await fetch('/api/rename-item', { method: 'POST', body: form });
+                const data = await res.json();
+
+                if (data.success) {
+                    browsePath(currentPath);
+                } else {
+                    alert('이름 변경 실패: ' + data.error);
+                }
+            } catch (e) {
+                alert('오류 발생: ' + e.message);
+            }
+        }
+
+        function copyToClipboard(btn) {
+            const container = btn.closest('.message-content');
+            const textEl = container.querySelector('.response-text');
+            const text = textEl ? textEl.innerText : container.innerText;
+
+            navigator.clipboard.writeText(text).then(() => {
+                const original = btn.innerHTML;
+                btn.innerHTML = '<svg class="w-4 h-4 text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>';
+                setTimeout(() => { btn.innerHTML = original; }, 2000);
+            }).catch(err => {
+                console.error('Failed to copy: ', err);
+            });
+        }
+
+        // === File Upload Functions ===
+
+        async function goUploadDir() {
+            try {
+                const res = await fetch('/api/go-upload-dir', { method: 'POST' });
+                const data = await res.json();
+                if (data.path) {
+                    browsePath(data.path);
+                }
+            } catch (e) {
+                console.error(e);
+            }
+        }
+
+        async function uploadFiles() {
+            const input = document.getElementById('uploadInput');
+            if (!input.files.length) return;
+
+            const form = new FormData();
+            for (let file of input.files) {
+                form.append('files', file);
+            }
+
+            // 현재 경로에 업로드
+            if (currentPath) {
+                form.append('target_path', currentPath);
+            }
+
+            try {
+                // Show loading
+                document.getElementById('indexStatus').textContent = '업로드 중...';
+
+                const res = await fetch('/api/upload-files', { method: 'POST', body: form });
+                const data = await res.json();
+
+                if (data.success) {
+                    document.getElementById('indexStatus').textContent = '업로드 완료';
+                    browsePath(data.upload_dir);  // Refresh view
+                } else {
+                    alert('업로드 실패: ' + data.error);
+                }
+            } catch (e) {
+                alert('업로드 중 오류 발생: ' + e.message);
+            }
+
+            // Clear input
+            input.value = '';
+        }
+
+        // === Auth Modal Functions ===
+
+        function openLoginModal() {
+            document.getElementById('loginModal').classList.remove('hidden');
+        }
+
+        function closeLoginModal() {
+            document.getElementById('loginModal').classList.add('hidden');
+        }
+
+        function switchAuthTab(tab) {
+            const loginTab = document.getElementById('loginTab');
+            const registerTab = document.getElementById('registerTab');
+            const loginForm = document.getElementById('loginForm');
+            const registerForm = document.getElementById('registerForm');
+
+            if (tab === 'login') {
+                loginTab.className = 'flex-1 py-3 text-sm font-medium text-white bg-dark-700/50 border-b-2 border-primary';
+                registerTab.className = 'flex-1 py-3 text-sm font-medium text-gray-400 hover:text-white transition-colors';
+                loginForm.classList.remove('hidden');
+                registerForm.classList.add('hidden');
+            } else {
+                loginTab.className = 'flex-1 py-3 text-sm font-medium text-gray-400 hover:text-white transition-colors';
+                registerTab.className = 'flex-1 py-3 text-sm font-medium text-white bg-dark-700/50 border-b-2 border-primary';
+                loginForm.classList.add('hidden');
+                registerForm.classList.remove('hidden');
+            }
+        }
+
+        async function doLogin() {
+            const username = document.getElementById('loginUsername').value;
+            const password = document.getElementById('loginPassword').value;
+            const errorDiv = document.getElementById('loginError');
+
+            if (!username || !password) {
+                errorDiv.textContent = '아이디와 비밀번호를 입력해주세요.';
+                errorDiv.classList.remove('hidden');
+                return;
+            }
+
+            try {
+                const form = new FormData();
+                form.append('username', username);
+                form.append('password', password);
+
+                const res = await fetch('/api/login', { method: 'POST', body: form });
+                const data = await res.json();
+
+                if (data.success) {
+                    location.reload();
+                } else {
+                    errorDiv.textContent = data.error || '로그인 실패';
+                    errorDiv.classList.remove('hidden');
+                }
+            } catch (e) {
+                errorDiv.textContent = '서버 오류 발생';
+                errorDiv.classList.remove('hidden');
+            }
+        }
+
+        async function doRegister() {
+            const username = document.getElementById('regUsername').value;
+            const password = document.getElementById('regPassword').value;
+            const confirm = document.getElementById('regPasswordConfirm').value;
+            const errorDiv = document.getElementById('registerError');
+
+            if (!username || !password || !confirm) {
+                errorDiv.textContent = '모든 필드를 입력해주세요.';
+                errorDiv.classList.remove('hidden');
+                return;
+            }
+
+            if (password !== confirm) {
+                errorDiv.textContent = '비밀번호가 일치하지 않습니다.';
+                errorDiv.classList.remove('hidden');
+                return;
+            }
+
+            try {
+                const form = new FormData();
+                form.append('username', username);
+                form.append('password', password);
+
+                const res = await fetch('/api/register', { method: 'POST', body: form });
+                const data = await res.json();
+
+                if (data.success) {
+                    alert('회원가입 성공! 로그인해주세요.');
+                    switchAuthTab('login');
+                    document.getElementById('loginUsername').value = username;
+                    document.getElementById('loginPassword').value = '';
+                } else {
+                    errorDiv.textContent = data.error || '회원가입 실패';
+                    errorDiv.classList.remove('hidden');
+                }
+            } catch (e) {
+                errorDiv.textContent = '서버 오류 발생';
+                errorDiv.classList.remove('hidden');
+            }
+        }
+
+        // Close modals on outside click
+        document.getElementById('loginModal').addEventListener('click', (e) => {
+            if (e.target === document.getElementById('loginModal')) closeLoginModal();
+        });
+
+        // Auto resize fix
+        const chatInput = document.querySelector('.chat-input');
+        if (chatInput) {
+            chatInput.addEventListener('input', function () {
+                if (this.value === '') {
+                    this.style.height = '48px'; // Reset height
+                }
+            });
+        }
+    </script>
+</body>
+
+</html>

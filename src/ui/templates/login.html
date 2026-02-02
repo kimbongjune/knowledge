@@ -1,0 +1,206 @@
+<!DOCTYPE html>
+<html lang="ko">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>로그인 - Document Assistant</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        primary: '#3b82f6',
+                        dark: {
+                            900: '#0f172a',
+                            800: '#1e293b',
+                            700: '#334155',
+                            600: '#475569'
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        body {
+            font-family: 'Inter', 'Pretendard', sans-serif;
+        }
+    </style>
+</head>
+
+<body class="bg-dark-900 min-h-screen flex items-center justify-center">
+    <div class="w-full max-w-md px-6">
+        <!-- Logo -->
+        <div class="text-center mb-8">
+            <h1 class="text-3xl font-bold text-white mb-2">Document Assistant</h1>
+            <p class="text-gray-400">문서 기반 AI 어시스턴트</p>
+        </div>
+
+        <!-- Card -->
+        <div class="bg-dark-800 rounded-2xl shadow-xl p-8 border border-dark-700">
+            <!-- Tabs -->
+            <div class="flex mb-6 bg-dark-700 rounded-lg p-1">
+                <button id="loginTab" onclick="showTab('login')"
+                    class="flex-1 py-2 px-4 rounded-md text-sm font-medium transition-all bg-primary text-white">
+                    로그인
+                </button>
+                <button id="registerTab" onclick="showTab('register')"
+                    class="flex-1 py-2 px-4 rounded-md text-sm font-medium transition-all text-gray-400 hover:text-white">
+                    회원가입
+                </button>
+            </div>
+
+            <!-- Login Form -->
+            <form id="loginForm" onsubmit="handleLogin(event)">
+                <div class="space-y-4">
+                    <div>
+                        <label class="block text-sm font-medium text-gray-300 mb-1">아이디</label>
+                        <input type="text" id="loginUsername" required
+                            class="w-full px-4 py-3 bg-dark-700 border border-dark-600 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary"
+                            placeholder="아이디를 입력하세요">
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-300 mb-1">비밀번호</label>
+                        <input type="password" id="loginPassword" required
+                            class="w-full px-4 py-3 bg-dark-700 border border-dark-600 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary"
+                            placeholder="비밀번호를 입력하세요">
+                    </div>
+                </div>
+                <button type="submit"
+                    class="w-full mt-6 py-3 px-4 bg-primary hover:bg-blue-600 text-white font-medium rounded-lg transition-colors">
+                    로그인
+                </button>
+            </form>
+
+            <!-- Register Form -->
+            <form id="registerForm" onsubmit="handleRegister(event)" class="hidden">
+                <div class="space-y-4">
+                    <div>
+                        <label class="block text-sm font-medium text-gray-300 mb-1">아이디</label>
+                        <input type="text" id="registerUsername" required minlength="2"
+                            class="w-full px-4 py-3 bg-dark-700 border border-dark-600 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary"
+                            placeholder="2자 이상">
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-300 mb-1">비밀번호</label>
+                        <input type="password" id="registerPassword" required minlength="4"
+                            class="w-full px-4 py-3 bg-dark-700 border border-dark-600 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary"
+                            placeholder="4자 이상">
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-300 mb-1">비밀번호 확인</label>
+                        <input type="password" id="registerPasswordConfirm" required
+                            class="w-full px-4 py-3 bg-dark-700 border border-dark-600 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary"
+                            placeholder="비밀번호를 다시 입력하세요">
+                    </div>
+                </div>
+                <button type="submit"
+                    class="w-full mt-6 py-3 px-4 bg-primary hover:bg-blue-600 text-white font-medium rounded-lg transition-colors">
+                    회원가입
+                </button>
+            </form>
+
+            <!-- Error Message -->
+            <div id="errorMsg"
+                class="hidden mt-4 p-3 bg-red-500/20 border border-red-500/50 rounded-lg text-red-400 text-sm text-center">
+            </div>
+
+            <!-- Guest Access -->
+            <div class="mt-6 pt-6 border-t border-dark-700 text-center">
+                <a href="/" class="text-gray-400 hover:text-white text-sm transition-colors">
+                    로그인 없이 사용하기 (대화 저장 안됨)
+                </a>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        function showTab(tab) {
+            const loginTab = document.getElementById('loginTab');
+            const registerTab = document.getElementById('registerTab');
+            const loginForm = document.getElementById('loginForm');
+            const registerForm = document.getElementById('registerForm');
+            const errorMsg = document.getElementById('errorMsg');
+
+            errorMsg.classList.add('hidden');
+
+            if (tab === 'login') {
+                loginTab.classList.add('bg-primary', 'text-white');
+                loginTab.classList.remove('text-gray-400');
+                registerTab.classList.remove('bg-primary', 'text-white');
+                registerTab.classList.add('text-gray-400');
+                loginForm.classList.remove('hidden');
+                registerForm.classList.add('hidden');
+            } else {
+                registerTab.classList.add('bg-primary', 'text-white');
+                registerTab.classList.remove('text-gray-400');
+                loginTab.classList.remove('bg-primary', 'text-white');
+                loginTab.classList.add('text-gray-400');
+                registerForm.classList.remove('hidden');
+                loginForm.classList.add('hidden');
+            }
+        }
+
+        function showError(msg) {
+            const errorMsg = document.getElementById('errorMsg');
+            errorMsg.textContent = msg;
+            errorMsg.classList.remove('hidden');
+        }
+
+        async function handleLogin(e) {
+            e.preventDefault();
+            const username = document.getElementById('loginUsername').value;
+            const password = document.getElementById('loginPassword').value;
+
+            try {
+                const form = new FormData();
+                form.append('username', username);
+                form.append('password', password);
+
+                const res = await fetch('/api/login', { method: 'POST', body: form });
+                const data = await res.json();
+
+                if (data.error) {
+                    showError(data.error);
+                } else {
+                    window.location.href = '/';
+                }
+            } catch (e) {
+                showError('오류가 발생했습니다');
+            }
+        }
+
+        async function handleRegister(e) {
+            e.preventDefault();
+            const username = document.getElementById('registerUsername').value;
+            const password = document.getElementById('registerPassword').value;
+            const passwordConfirm = document.getElementById('registerPasswordConfirm').value;
+
+            if (password !== passwordConfirm) {
+                showError('비밀번호가 일치하지 않습니다');
+                return;
+            }
+
+            try {
+                const form = new FormData();
+                form.append('username', username);
+                form.append('password', password);
+
+                const res = await fetch('/api/register', { method: 'POST', body: form });
+                const data = await res.json();
+
+                if (data.error) {
+                    showError(data.error);
+                } else {
+                    window.location.href = '/';
+                }
+            } catch (e) {
+                showError('오류가 발생했습니다');
+            }
+        }
+    </script>
+</body>
+
+</html>

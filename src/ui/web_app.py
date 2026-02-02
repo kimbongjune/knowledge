@@ -5,15 +5,17 @@ FastAPI + Jinja2 기반 웹 인터페이스
 import os
 import json
 import asyncio
+import secrets
 from pathlib import Path
 from typing import List, Optional
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, Request, Form, UploadFile, File, BackgroundTasks
-from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse
+from fastapi import FastAPI, Request, Form, UploadFile, File, BackgroundTasks, Response, Cookie
+from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel
+from starlette.middleware.sessions import SessionMiddleware
 
 import sys
 sys.path.append(str(Path(__file__).parent.parent.parent))
@@ -24,10 +26,125 @@ from src.vector.incremental_manager import IncrementalManager
 from src.llm.model_manager import ModelManager
 from src.rag.rag_pipeline import RAGPipeline
 from src.storage.chat_storage import ChatStorage
-from config.settings import MODELS_PATH, HOST, PORT
+from config.settings import MODELS_PATH, HOST, PORT, UPLOAD_DIR
 import httpx
-import json
+import hashlib
 
+
+
+# === Trash Helper Functions ===
+def _add_to_trash(name):
+    try:
+        from config.settings import DATA_DIR
+        import json
+        trash_file = DATA_DIR / "trash.json"
+        trash = set()
+        if trash_file.exists():
+            try: trash = set(json.loads(trash_file.read_text(encoding='utf-8')))
+            except: pass
+        trash.add(name)
+        trash_file.write_text(json.dumps(list(trash)), encoding='utf-8')
+    except: pass
+
+def _cleanup_trash():
+    try:
+        from config.settings import DATA_DIR, CHROMA_DB_PATH
+        import json
+        import shutil
+        trash_file = DATA_DIR / "trash.json"
+        if not trash_file.exists(): return
+        
+        trash = set(json.loads(trash_file.read_text(encoding='utf-8')))
+        new_trash = set()
+        
+        for name in trash:
+            path = CHROMA_DB_PATH / name
+            if not path.exists(): continue
+            try:
+                if path.is_dir(): shutil.rmtree(path)
+                else: path.unlink()
+            except:
+                new_trash.add(name)
+        
+        if not new_trash:
+            trash_file.unlink()
+        else:
+            trash_file.write_text(json.dumps(list(new_trash)), encoding='utf-8')
+    except: pass
+# ==============================
+
+# === Resource Management Helpers ===
+def _get_managed_file():
+    from config.settings import DATA_DIR
+    return DATA_DIR / "managed_paths.json"
+
+def _load_managed_paths():
+    try:
+        import json
+        f = _get_managed_file()
+        if f.exists():
+            return set(json.loads(f.read_text(encoding='utf-8')))
+    except: pass
+    return set()
+
+def _save_managed_paths(paths):
+    try:
+        import json
+        f = _get_managed_file()
+        f.write_text(json.dumps(list(paths)), encoding='utf-8')
+    except: pass
+
+def _register_path(path_str):
+    try:
+        from pathlib import Path
+        p = str(Path(path_str).resolve())
+        paths = _load_managed_paths()
+        paths.add(p)
+        _save_managed_paths(paths)
+    except: pass
+
+def _unregister_path(path_str):
+    try:
+        from pathlib import Path
+        p = str(Path(path_str).resolve())
+        paths = _load_managed_paths()
+        if p in paths:
+            paths.remove(p)
+            _save_managed_paths(paths)
+    except: pass
+
+def _is_managed(target_path):
+    try:
+        from pathlib import Path
+        target = Path(target_path).resolve()
+        target_str = str(target)
+        paths = _load_managed_paths()
+        
+        # 1. 직접 등록 여부
+        if target_str in paths: return True
+        
+        # 2. 상위 경로 등록 여부 (부모가 관리되면 자식도 관리됨)
+        # 단, 루트 경로 등은 제외해야 함
+        for parent in target.parents:
+            if str(parent) in paths:
+                return True
+    except: pass
+    return False
+
+def _update_managed_path(old_path, new_path):
+    try:
+        from pathlib import Path
+        old_p = str(Path(old_path).resolve())
+        new_p = str(Path(new_path).resolve())
+        
+        paths = _load_managed_paths()
+        # 직접 등록된 경로라면 갱신
+        if old_p in paths:
+            paths.remove(old_p)
+            paths.add(new_p)
+            _save_managed_paths(paths)
+    except: pass
+# ==============================
 
 # 전역 상태
 class AppState:
@@ -39,19 +156,41 @@ class AppState:
         self.chat_storage: Optional[ChatStorage] = None
         self.current_collection: Optional[str] = None
         self.current_session_id: Optional[str] = None
+        self.current_user_id: Optional[str] = None  # 로그인 사용자 ID
+        self.pending_session: bool = False  # 새 대화 클릭 시 True, 첫 메시지 시 세션 생성
         self.indexing_progress: dict = {"current": 0, "total": 0, "status": "", "done": True}
 
 app_state = AppState()
 
 
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    # 시작 시 초기화
-    print("초기화 중...")
+def hash_password(password: str) -> str:
+    """간단한 비밀번호 해싱 (bcrypt 대신 SHA256 + salt 사용)"""
+    salt = "document_assistant_salt_2026"
+    return hashlib.sha256(f"{password}{salt}".encode()).hexdigest()
+
+
+def verify_password(password: str, hashed: str) -> bool:
+    """비밀번호 검증"""
+    return hash_password(password) == hashed
+
+def setup_services():
+    """애플리케이션 서비스 초기화"""
     app_state.doc_processor = DocumentProcessor()
     app_state.vector_manager = VectorManager()
     app_state.model_manager = ModelManager()
     app_state.chat_storage = ChatStorage()
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # 시작 시 초기화
+    print("초기화 중...")
+    setup_services()
+    try: _cleanup_trash() # 시작 시 쓰레기 파일 정리 시도
+    except Exception as e: print(f"쓰레기 파일 정리 중 오류 발생: {e}")
+    # [설정] 기본 업로드 폴더를 관리 대상으로 등록 (Whitelist 초기화)
+    try: _register_path(UPLOAD_DIR)
+    except: pass
+    
     print("초기화 완료!")
     yield
     # 종료 시 정리
@@ -60,6 +199,9 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="Document Assistant", lifespan=lifespan)
+
+# 세션 미들웨어 추가 (쿠키 기반 인증)
+app.add_middleware(SessionMiddleware, secret_key=secrets.token_hex(32))
 
 # 템플릿 및 정적 파일 설정
 TEMPLATES_DIR = Path(__file__).parent / "templates"
@@ -71,19 +213,116 @@ templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
 app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 
 
+# === 인증 API ===
+
+@app.get("/login", response_class=HTMLResponse)
+async def login_page(request: Request):
+    """로그인 페이지"""
+    user_id = request.session.get("user_id")
+    if user_id:
+        return RedirectResponse(url="/", status_code=302)
+    return templates.TemplateResponse("login.html", {"request": request})
+
+
+@app.post("/api/register")
+async def register(request: Request, username: str = Form(...), password: str = Form(...)):
+    """회원 가입"""
+    if not username or not password:
+        return JSONResponse({"error": "아이디와 비밀번호를 입력하세요"}, status_code=400)
+    
+    if len(username) < 2 or len(password) < 4:
+        return JSONResponse({"error": "아이디 2자, 비밀번호 4자 이상"}, status_code=400)
+    
+    password_hash = hash_password(password)
+    user = app_state.chat_storage.create_user(username, password_hash)
+    
+    if not user:
+        return JSONResponse({"error": "이미 존재하는 아이디입니다"}, status_code=400)
+    
+    # 자동 로그인
+    request.session["user_id"] = user.id
+    request.session["username"] = user.username
+    app_state.current_user_id = user.id
+    
+    return {"success": True, "user": {"id": user.id, "username": user.username}}
+
+
+@app.post("/api/login")
+async def login(request: Request, username: str = Form(...), password: str = Form(...)):
+    """로그인"""
+    user_data = app_state.chat_storage.get_user_by_username(username)
+    
+    if not user_data:
+        return JSONResponse({"error": "아이디 또는 비밀번호가 잘못되었습니다"}, status_code=401)
+    
+    user_id, user_name, password_hash, created_at = user_data
+    
+    if not verify_password(password, password_hash):
+        return JSONResponse({"error": "아이디 또는 비밀번호가 잘못되었습니다"}, status_code=401)
+    
+    request.session["user_id"] = user_id
+    request.session["username"] = user_name
+    app_state.current_user_id = user_id
+    
+    return {"success": True, "user": {"id": user_id, "username": user_name}}
+
+
+@app.post("/api/logout")
+async def logout(request: Request):
+    """로그아웃"""
+    request.session.clear()
+    app_state.current_user_id = None
+    app_state.current_session_id = None
+    return {"success": True}
+
+
+@app.get("/api/me")
+async def get_current_user(request: Request):
+    """현재 로그인 사용자 확인"""
+    user_id = request.session.get("user_id")
+    username = request.session.get("username")
+    
+    if user_id:
+        return {"logged_in": True, "user": {"id": user_id, "username": username}}
+    return {"logged_in": False, "user": None}
+
+
 # === API 엔드포인트 ===
 
 @app.get("/", response_class=HTMLResponse)
 async def index(request: Request):
     """메인 페이지"""
+    # 세션에서 사용자 ID 가져오기
+    user_id = request.session.get("user_id")
+    username = request.session.get("username")
+    
+    if user_id:
+        app_state.current_user_id = user_id
+    
     # 실제 설치된 모델만 표시
     models = app_state.model_manager.list_installed_models() if app_state.model_manager else []
-    collections = app_state.vector_manager.list_collections() if app_state.vector_manager else []
+    
+    # 컬렉션 목록 가져오기 (쓰레기통 필터링 포함)
+    collections = []
+    if app_state.vector_manager:
+        all_collections = app_state.vector_manager.list_collections()
+        # 쓰레기통 로직 직접 구현 (함수 호출 문제 방지)
+        trash = set()
+        try:
+            from config.settings import DATA_DIR
+            import json
+            trash_file = DATA_DIR / "trash.json"
+            if trash_file.exists():
+                trash = set(json.loads(trash_file.read_text(encoding='utf-8')))
+        except:
+            pass
+            
+        collections = [c for c in all_collections if c not in trash]
     
     collection_stats = []
     for coll in collections:
-        # 유효한 컬렉션 이름만 처리 (영문/숫자만)
-        if not coll or not coll.isascii():
+        # 유효한 컬렉션 이름만 처리 (영문/숫자만) -> coll은 문자열임
+        if not coll or not isinstance(coll, str) or not coll.isascii():
             continue
         try:
             stats = app_state.vector_manager.get_collection_stats(coll)
@@ -100,8 +339,10 @@ async def index(request: Request):
         "models": [{"name": m.name, "size": m.size, "is_vision": m.is_vision} for m in models],
         "collections": collection_stats,
         "current_model": app_state.model_manager._current_model_name if app_state.model_manager else None,
-        "current_collection": app_state.current_collection
+        "current_collection": app_state.current_collection,
+        "user": {"id": user_id, "username": username} if user_id else None
     })
+
 
 
 @app.get("/api/browse")
@@ -129,17 +370,40 @@ async def browse_folder(path: str = ""):
         
         # 상위 폴더
         if path.parent != path:
-            items.append({"name": "..", "path": str(path.parent), "is_dir": True})
+            items.append({"name": "..", "path": str(path.parent), "is_dir": True, "can_delete": False})
         
         # 하위 항목
         try:
+            # 폴더 먼저
+            dirs = []
+            files = []
+            
             for item in sorted(path.iterdir()):
+                # [수정] 관리 권한 체크 (Whitelist 기반)
+                is_managed_item = _is_managed(item)
+
                 if item.is_dir():
-                    items.append({
+                    dirs.append({
                         "name": item.name,
                         "path": str(item),
-                        "is_dir": True
+                        "is_dir": True,
+                        "can_delete": is_managed_item
                     })
+                elif item.is_file():
+                     # 지원하는 확장자만 표시 (또는 모든 파일 표시하고 아이콘으로 구분)
+                     from config.settings import SUPPORTED_EXTENSIONS
+                     if item.suffix.lower() in SUPPORTED_EXTENSIONS or item.suffix.lower() in ['.jpg', '.png', '.jpeg']:
+                         files.append({
+                            "name": item.name,
+                            "path": str(item), 
+                            "is_dir": False,
+                            "size": item.stat().st_size,
+                            "can_delete": is_managed_item
+                        })
+            
+            items.extend(dirs)
+            items.extend(files)
+            
         except PermissionError:
             pass
         
@@ -177,12 +441,16 @@ async def start_indexing(folder_path: str = Form(...), collection_name: str = Fo
             return {
                 "success": True,
                 "message": "변경 사항 없음. 이미 최신 상태입니다.",
+                "collection": collection_name,
+                "chunks": 0,
+                "deleted_chunks": 0,
                 "indexed_count": inc_manager.get_indexed_count()
             }
         
         # 삭제된 파일 처리
+        deleted_chunks_count = 0
         if changes.deleted:
-            app_state.vector_manager.remove_documents_by_source(changes.deleted, collection_name)
+            deleted_chunks_count = app_state.vector_manager.remove_documents_by_source(changes.deleted, collection_name)
             inc_manager.remove_file_metadata(changes.deleted)
         
         # 추가/수정된 파일 처리
@@ -212,6 +480,7 @@ async def start_indexing(folder_path: str = Form(...), collection_name: str = Fo
             "modified": len(changes.modified),
             "deleted": len(changes.deleted),
             "chunks": added_count,
+            "deleted_chunks": deleted_chunks_count,
             "indexed_count": inc_manager.get_indexed_count()
         }
     except Exception as e:
@@ -228,9 +497,6 @@ async def load_model(model_name: str = Form(...)):
         return JSONResponse({"error": str(e)}, status_code=500)
 
 
-@app.post("/api/setup-rag")
-async def setup_rag(collection_name: str = Form(...)):
-    """RAG 파이프라인 설정"""
     try:
         if not app_state.model_manager._current_model:
             return JSONResponse({"error": "먼저 모델을 로드하세요."}, status_code=400)
@@ -244,24 +510,6 @@ async def setup_rag(collection_name: str = Form(...)):
         return JSONResponse({"error": str(e)}, status_code=500)
 
 
-@app.post("/api/collections/rename")
-async def rename_collection(old_name: str = Form(...), new_name: str = Form(...)):
-    """컬렉션 이름 변경"""
-    try:
-        # 이름 유효성 검사 (영문, 숫자, 언더스코어만 허용)
-        cleaned_name = "".join(c for c in new_name if c.isascii() and (c.isalnum() or c == "_"))
-        if not cleaned_name:
-            return JSONResponse({"error": "유효하지 않은 컬렉션 이름입니다. 영문, 숫자, _ 만 사용 가능합니다."}, status_code=400)
-            
-        app_state.vector_manager.rename_collection(old_name, cleaned_name)
-        
-        # 현재 선택된 컬렉션이면 업데이트
-        if app_state.current_collection == old_name:
-            app_state.current_collection = cleaned_name
-            
-        return {"success": True, "old_name": old_name, "new_name": cleaned_name}
-    except Exception as e:
-        return JSONResponse({"error": str(e)}, status_code=500)
 
 
 @app.post("/api/chat")
@@ -386,20 +634,23 @@ async def chat(
             if is_vision and image_attachments:
                 request_body["images"] = image_attachments
             
-            # 세션 생성 (필요시)
-            if not app_state.current_session_id:
+            # 세션 생성 (로그인한 사용자만, 첫 메시지 시)
+            if app_state.current_user_id and not app_state.current_session_id:
                 session = app_state.chat_storage.create_session(
                     collection_name=app_state.current_collection,
-                    model_name=app_state.model_manager._current_model_name
+                    model_name=app_state.model_manager._current_model_name,
+                    user_id=app_state.current_user_id
                 )
                 app_state.current_session_id = session.id
+                app_state.pending_session = False
             
-            # 사용자 메시지 저장
-            app_state.chat_storage.add_message(
-                app_state.current_session_id, 
-                "user", 
-                question
-            )
+            # 사용자 메시지 저장 (로그인한 사용자만)
+            if app_state.current_user_id and app_state.current_session_id:
+                app_state.chat_storage.add_message(
+                    app_state.current_session_id, 
+                    "user", 
+                    question
+                )
             
             full_answer = ""
             async with httpx.AsyncClient(timeout=300.0) as client:
@@ -417,18 +668,19 @@ async def chat(
                             except:
                                 pass
             
-            # AI 응답 저장
-            app_state.chat_storage.add_message(
-                app_state.current_session_id, 
-                "assistant", 
-                full_answer,
-                sources=sources[:3]
-            )
-            
-            # 자동 제목 생성
-            session = app_state.chat_storage.get_session(app_state.current_session_id)
-            if session and session.message_count <= 2:
-                app_state.chat_storage.auto_title_from_first_message(app_state.current_session_id)
+            # AI 응답 저장 (로그인한 사용자만)
+            if app_state.current_user_id and app_state.current_session_id:
+                app_state.chat_storage.add_message(
+                    app_state.current_session_id, 
+                    "assistant", 
+                    full_answer,
+                    sources=sources[:3]
+                )
+                
+                # 자동 제목 생성
+                session = app_state.chat_storage.get_session(app_state.current_session_id)
+                if session and session.message_count <= 2:
+                    app_state.chat_storage.auto_title_from_first_message(app_state.current_session_id)
             
             yield f"data: {json.dumps({'type': 'done'})}\n\n"
             
@@ -485,26 +737,39 @@ async def get_collections():
     """컬렉션 목록"""
     collections = app_state.vector_manager.list_collections() if app_state.vector_manager else []
     
+    # Trash 필터링 (직접 구현)
+    try:
+        from config.settings import DATA_DIR
+        import json
+        trash_file = DATA_DIR / "trash.json"
+        if trash_file.exists():
+            trash = set(json.loads(trash_file.read_text(encoding='utf-8')))
+            collections = [c for c in collections if c not in trash]
+    except: pass
+    
     result = []
     for coll in collections:
-        stats = app_state.vector_manager.get_collection_stats(coll)
-        result.append({
-            "name": coll,
-            "count": stats.get("document_count", 0)
-        })
+        try:
+            stats = app_state.vector_manager.get_collection_stats(coll)
+            result.append({
+                "name": coll,
+                "count": stats.get("document_count", 0)
+            })
+        except Exception as e:
+            # 보이지 않는 불량 컬렉션(이름 규칙 위반 등)은 건너뜀
+            print(f"[Warn] Skipping invalid collection '{coll}': {e}")
+            continue
     
     return {"collections": result, "current": app_state.current_collection}
 
 
 @app.post("/api/clear-chat")
 async def clear_chat():
-    """새 대화 시작 (새 세션 생성)"""
-    session = app_state.chat_storage.create_session(
-        collection_name=app_state.current_collection,
-        model_name=app_state.model_manager._current_model_name if app_state.model_manager else None
-    )
-    app_state.current_session_id = session.id
-    return {"success": True, "session_id": session.id}
+    """새 대화 시작 (DB에 저장하지 않음 - 첫 메시지 전송 시 세션 생성)"""
+    app_state.current_session_id = None
+    app_state.pending_session = True  # 첫 메시지에서 세션 생성 예약
+    return {"success": True, "session_id": None}
+
 
 
 @app.post("/api/extract-text")
@@ -604,9 +869,15 @@ async def delete_model(model_name: str):
 # === 세션 관리 API ===
 
 @app.get("/api/sessions")
-async def get_sessions():
-    """세션 목록"""
-    sessions = app_state.chat_storage.list_sessions()
+async def get_sessions(request: Request):
+    """세션 목록 (로그인한 사용자의 세션만)"""
+    user_id = request.session.get("user_id")
+    
+    # 로그인하지 않은 경우 빈 목록 반환
+    if not user_id:
+        return {"sessions": [], "current_session_id": None}
+    
+    sessions = app_state.chat_storage.list_sessions(user_id=user_id)
     return {
         "sessions": [
             {
@@ -623,12 +894,19 @@ async def get_sessions():
 
 
 @app.post("/api/sessions")
-async def create_session():
+async def create_session(request: Request):
     """새 세션 생성"""
+    user_id = request.session.get("user_id")
+    
+    # 로그인하지 않은 경우 세션 생성 안 함
+    if not user_id:
+        return {"success": False, "error": "로그인이 필요합니다", "session_id": None}
+    
     session = app_state.chat_storage.create_session(
         title="새 대화",
         collection_name=app_state.current_collection,
-        model_name=app_state.model_manager._current_model_name if app_state.model_manager else None
+        model_name=app_state.model_manager._current_model_name if app_state.model_manager else None,
+        user_id=user_id
     )
     app_state.current_session_id = session.id
     return {"success": True, "session_id": session.id}
@@ -682,11 +960,337 @@ async def delete_session(session_id: str):
     return {"success": success}
 
 
+# === 파일 업로드 API ===
+
+@app.get("/api/upload-dir")
+async def get_upload_dir():
+    """업로드 디렉토리 경로 및 파일 목록"""
+    try:
+        files = []
+        if UPLOAD_DIR.exists():
+            for item in UPLOAD_DIR.iterdir():
+                if item.is_file():
+                    files.append({
+                        "name": item.name,
+                        "size": item.stat().st_size,
+                        "path": str(item)
+                    })
+                elif item.is_dir():
+                    files.append({
+                        "name": item.name,
+                        "is_dir": True,
+                        "path": str(item)
+                    })
+        return {
+            "path": str(UPLOAD_DIR),
+            "files": files
+        }
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+
+@app.post("/api/upload-files")
+async def upload_files(files: List[UploadFile] = File(...), target_path: str = Form(None)):
+    """파일 업로드 (지정된 경로 또는 서버의 uploads 폴더로)"""
+    try:
+        # 업로드 대상 디렉토리 결정
+        if target_path:
+            upload_dir = Path(target_path)
+            if not upload_dir.exists():
+                return JSONResponse({"error": "대상 경로가 존재하지 않습니다"}, status_code=400)
+            if not upload_dir.is_dir():
+                return JSONResponse({"error": "대상 경로는 폴더여야 합니다"}, status_code=400)
+        else:
+            upload_dir = UPLOAD_DIR
+            
+        uploaded = []
+        for file in files:
+            file_path = upload_dir / file.filename
+            
+            # 중복 파일명 처리
+            counter = 1
+            original_stem = file_path.stem
+            while file_path.exists():
+                file_path = upload_dir / f"{original_stem}_{counter}{file_path.suffix}"
+                counter += 1
+            
+            with open(file_path, "wb") as f:
+                content = await file.read()
+                f.write(content)
+            
+            # [등록] 생성된 파일 관리 대상에 추가
+            _register_path(file_path)
+            
+            uploaded.append({
+                "name": file_path.name,
+                "path": str(file_path),
+                "size": len(content)
+            })
+        
+        return {"success": True, "files": uploaded, "upload_dir": str(upload_dir)}
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+@app.post("/api/mkdir")
+async def create_folder(path: str = Form(...), name: str = Form(...)):
+    """새 폴더 생성"""
+    try:
+        base_path = Path(path)
+        if not base_path.exists() or not base_path.is_dir():
+             return JSONResponse({"error": "상위 경로가 유효하지 않습니다"}, status_code=400)
+             
+        new_folder = base_path / name
+        if new_folder.exists():
+             return JSONResponse({"error": "이미 존재하는 폴더 이름입니다"}, status_code=400)
+             
+        new_folder.mkdir()
+        # [등록] 생성된 폴더 관리 대상에 추가
+        _register_path(new_folder)
+        return {"success": True, "path": str(new_folder)}
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+@app.post("/api/delete-item")
+async def delete_item(path: str = Form(...)):
+    """파일/폴더 삭제 (업로드 폴더 내에서만 허용)"""
+    import shutil
+    try:
+        target = Path(path).resolve()
+        
+        # [수정] 사용자 요청: 웹에서 생성된 리소스만 삭제 가능 (Whitelist)
+        if not _is_managed(target):
+             return JSONResponse({"error": "권한이 없습니다. 웹에서 생성된 항목만 삭제할 수 있습니다."}, status_code=403)
+
+        # 시스템 루트 등 2차 방어
+        import os
+        if len(target.parts) <= 1 or str(target).upper() == os.environ.get("SystemRoot", "C:\\WINDOWS").upper():
+             return JSONResponse({"error": "시스템 경로는 삭제할 수 없습니다"}, status_code=403)
+        # except ValueError:
+        #      return JSONResponse({"error": "유효하지 않은 경로입니다"}, status_code=400)
+        
+        if not target.exists():
+             return JSONResponse({"error": "항목이 존재하지 않습니다"}, status_code=404)
+             
+        if target.is_dir():
+            shutil.rmtree(target)
+        else:
+            target.unlink()
+            
+        return {"success": True}
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+@app.post("/api/rename-item")
+async def rename_item(path: str = Form(...), new_name: str = Form(...)):
+    """파일/폴더 이름 변경"""
+    try:
+        target = Path(path).resolve()
+        
+        # [수정] 사용자 요청: 웹에서 생성된 항목만 수정 가능
+        if not _is_managed(target):
+            return JSONResponse({"error": "권한이 없습니다. 웹에서 생성된 항목만 수정할 수 있습니다."}, status_code=403)
+
+        # [주의] 존재 여부 체크 시 권한 문제 있을 수 있으나 try로 커버
+        if not target.exists():
+             return JSONResponse({"error": "항목이 존재하지 않습니다"}, status_code=404)
+        
+        new_path = target.parent / new_name
+        if new_path.exists():
+             return JSONResponse({"error": "이미 존재하는 이름입니다"}, status_code=400)
+             
+        target.rename(new_path)
+        # [갱신] 관리 경로 업데이트
+        _update_managed_path(target, new_path)
+        
+        return {"success": True, "path": str(new_path)}
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+
+@app.post("/api/go-upload-dir")
+async def go_upload_dir():
+    """업로드 디렉토리로 이동 (폴더 경로 반환)"""
+    return {"path": str(UPLOAD_DIR)}
+
+
+
+
+
+# === SQLite Administration (H2-style Admin Console) ===
+
+@app.get("/admin", response_class=HTMLResponse)
+@app.get("/admin/", response_class=HTMLResponse)
+async def admin_page(request: Request):
+    """SQLite Admin 페이지 - H2 스타일 데이터베이스 콘솔"""
+    return templates.TemplateResponse("admin.html", {"request": request})
+
+
+@app.get("/api/admin/databases")
+async def get_admin_databases():
+    """사용 가능한 데이터베이스 목록 반환"""
+    from config.settings import DATA_DIR
+    try:
+        db_files = []
+        
+        # DATA_DIR 내의 모든 DB 파일 스캔
+        if DATA_DIR.exists():
+            for f in os.listdir(DATA_DIR):
+                if f.endswith(('.db', '.sqlite3')):
+                    db_files.append({
+                        "name": f,
+                        "path": str(DATA_DIR / f)
+                    })
+        
+        # chroma_db 내의 sqlite 파일도 스캔
+        chroma_dir = DATA_DIR / "chroma_db"
+        if chroma_dir.exists():
+            for root, dirs, files in os.walk(chroma_dir):
+                for f in files:
+                    if f.endswith('.sqlite3'):
+                        rel_path = os.path.relpath(os.path.join(root, f), DATA_DIR)
+                        db_files.append({
+                            "name": f"chroma: {rel_path}",
+                            "path": os.path.join(root, f)
+                        })
+        
+        return {"databases": db_files}
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+
+@app.get("/api/admin/tables")
+async def get_admin_tables(db: str = "metadata.db"):
+    """선택된 데이터베이스의 테이블 목록 반환"""
+    from config.settings import DATA_DIR
+    import sqlite3
+    
+    try:
+        # DB 경로 결정
+        if db.startswith("/") or db.startswith("C:") or db.startswith("c:"):
+            db_path = db
+        else:
+            db_path = str(DATA_DIR / db)
+        
+        if not os.path.exists(db_path):
+            return {"error": f"Database not found: {db}", "tables": []}
+        
+        conn = sqlite3.connect(db_path)
+        cursor = conn.cursor()
+        
+        # 테이블 목록 조회
+        cursor.execute("SELECT name FROM sqlite_master WHERE type='table' ORDER BY name")
+        tables = [row[0] for row in cursor.fetchall()]
+        
+        conn.close()
+        return {"tables": tables, "db": db}
+    except Exception as e:
+        return {"error": str(e), "tables": []}
+
+
+@app.post("/api/admin/query")
+async def execute_admin_query(request: Request):
+    """SQL 쿼리 실행"""
+    from config.settings import DATA_DIR
+    import sqlite3
+    
+    try:
+        body = await request.json()
+        db = body.get("db", "metadata.db")
+        query = body.get("query", "").strip()
+        
+        if not query:
+            return {"error": "Query is empty", "columns": [], "rows": []}
+        
+        # DB 경로 결정
+        if db.startswith("/") or db.startswith("C:") or db.startswith("c:"):
+            db_path = db
+        else:
+            db_path = str(DATA_DIR / db)
+        
+        if not os.path.exists(db_path):
+            return {"error": f"Database not found: {db}", "columns": [], "rows": []}
+        
+        conn = sqlite3.connect(db_path)
+        cursor = conn.cursor()
+        
+        # 쿼리 타입 판별
+        query_upper = query.upper().strip()
+        is_select = query_upper.startswith("SELECT") or query_upper.startswith("PRAGMA") or query_upper.startswith("EXPLAIN")
+        
+        cursor.execute(query)
+        
+        if is_select:
+            columns = [desc[0] for desc in cursor.description] if cursor.description else []
+            rows = cursor.fetchall()
+            conn.close()
+            return {"columns": columns, "rows": rows, "affected": len(rows)}
+        else:
+            conn.commit()
+            affected = cursor.rowcount
+            conn.close()
+            return {"columns": ["Result"], "rows": [[f"{affected} row(s) affected"]], "affected": affected}
+            
+    except sqlite3.Error as e:
+        return {"error": f"SQL Error: {str(e)}", "columns": [], "rows": []}
+    except Exception as e:
+        return {"error": str(e), "columns": [], "rows": []}
+
+
+@app.get("/api/admin/table-info")
+async def get_table_info(db: str, table: str):
+    """테이블 구조 정보 반환"""
+    from config.settings import DATA_DIR
+    import sqlite3
+    
+    try:
+        # DB 경로 결정
+        if db.startswith("/") or db.startswith("C:") or db.startswith("c:"):
+            db_path = db
+        else:
+            db_path = str(DATA_DIR / db)
+        
+        if not os.path.exists(db_path):
+            return {"error": f"Database not found: {db}"}
+        
+        conn = sqlite3.connect(db_path)
+        cursor = conn.cursor()
+        
+        # 테이블 정보 조회
+        cursor.execute(f"PRAGMA table_info('{table}')")
+        columns = cursor.fetchall()
+        
+        # 인덱스 정보
+        cursor.execute(f"PRAGMA index_list('{table}')")
+        indexes = cursor.fetchall()
+        
+        # 행 수
+        cursor.execute(f"SELECT COUNT(*) FROM '{table}'")
+        row_count = cursor.fetchone()[0]
+        
+        conn.close()
+        
+        return {
+            "table": table,
+            "columns": [
+                {
+                    "cid": col[0],
+                    "name": col[1],
+                    "type": col[2],
+                    "notnull": col[3],
+                    "default": col[4],
+                    "pk": col[5]
+                } for col in columns
+            ],
+            "indexes": indexes,
+            "row_count": row_count
+        }
+    except Exception as e:
+        return {"error": str(e)}
+
 def run_server():
     """서버 실행"""
     import uvicorn
     uvicorn.run(app, host=HOST, port=PORT)
-
 
 if __name__ == "__main__":
     run_server()

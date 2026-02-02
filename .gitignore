@@ -37,6 +37,7 @@ ENV/
 data/chroma_db/
 data/models/*.gguf
 data/metadata/
+data/uploads/
 *.db
 *.sqlite3
 

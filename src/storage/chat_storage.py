@@ -30,6 +30,15 @@ class ChatSession:
     created_at: str
     updated_at: str
     message_count: int = 0
+    user_id: Optional[str] = None  # 로그인 사용자 ID
+
+
+@dataclass
+class User:
+    """사용자"""
+    id: str
+    username: str
+    created_at: str
 
 
 class ChatStorage:
@@ -48,6 +57,16 @@ class ChatStorage:
         conn = sqlite3.connect(self.db_path)
         cursor = conn.cursor()
         
+        # 사용자 테이블
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS users (
+                id TEXT PRIMARY KEY,
+                username TEXT UNIQUE NOT NULL,
+                password_hash TEXT NOT NULL,
+                created_at TEXT NOT NULL
+            )
+        ''')
+        
         # 세션 테이블
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS sessions (
@@ -55,8 +74,10 @@ class ChatStorage:
                 title TEXT NOT NULL,
                 collection_name TEXT,
                 model_name TEXT,
+                user_id TEXT,
                 created_at TEXT NOT NULL,
-                updated_at TEXT NOT NULL
+                updated_at TEXT NOT NULL,
+                FOREIGN KEY (user_id) REFERENCES users(id)
             )
         ''')
         
@@ -73,8 +94,15 @@ class ChatStorage:
             )
         ''')
         
-        # 인덱스
+        # 기존 sessions 테이블에 user_id 컬럼 추가 (마이그레이션 - 인덱스 생성 전에 먼저 실행)
+        try:
+            cursor.execute('ALTER TABLE sessions ADD COLUMN user_id TEXT')
+        except sqlite3.OperationalError:
+            pass  # 이미 컬럼 존재
+        
+        # 인덱스 (마이그레이션 후 생성)
         cursor.execute('CREATE INDEX IF NOT EXISTS idx_messages_session ON messages(session_id)')
+        cursor.execute('CREATE INDEX IF NOT EXISTS idx_sessions_user ON sessions(user_id)')
         
         conn.commit()
         conn.close()
@@ -84,9 +112,53 @@ class ChatStorage:
         conn.row_factory = sqlite3.Row
         return conn
     
+    # === 사용자 관리 ===
+    
+    def create_user(self, username: str, password_hash: str) -> Optional[User]:
+        """사용자 생성"""
+        import hashlib
+        user_id = hashlib.md5(username.encode()).hexdigest()[:8]
+        now = datetime.now().isoformat()
+        
+        conn = self._get_conn()
+        cursor = conn.cursor()
+        try:
+            cursor.execute('''
+                INSERT INTO users (id, username, password_hash, created_at)
+                VALUES (?, ?, ?, ?)
+            ''', (user_id, username, password_hash, now))
+            conn.commit()
+            conn.close()
+            return User(id=user_id, username=username, created_at=now)
+        except sqlite3.IntegrityError:
+            conn.close()
+            return None  # 이미 존재하는 사용자
+    
+    def get_user_by_username(self, username: str) -> Optional[tuple]:
+        """사용자 조회 (username으로)"""
+        conn = self._get_conn()
+        cursor = conn.cursor()
+        cursor.execute('SELECT id, username, password_hash, created_at FROM users WHERE username = ?', (username,))
+        row = cursor.fetchone()
+        conn.close()
+        if row:
+            return (row['id'], row['username'], row['password_hash'], row['created_at'])
+        return None
+    
+    def get_user_by_id(self, user_id: str) -> Optional[User]:
+        """사용자 조회 (id로)"""
+        conn = self._get_conn()
+        cursor = conn.cursor()
+        cursor.execute('SELECT id, username, created_at FROM users WHERE id = ?', (user_id,))
+        row = cursor.fetchone()
+        conn.close()
+        if row:
+            return User(id=row['id'], username=row['username'], created_at=row['created_at'])
+        return None
+    
     # === 세션 관리 ===
     
-    def create_session(self, title: str = "새 대화", collection_name: str = None, model_name: str = None) -> ChatSession:
+    def create_session(self, title: str = "새 대화", collection_name: str = None, model_name: str = None, user_id: str = None) -> ChatSession:
         """새 세션 생성"""
         session_id = str(uuid.uuid4())[:8]
         now = datetime.now().isoformat()
@@ -94,9 +166,9 @@ class ChatStorage:
         conn = self._get_conn()
         cursor = conn.cursor()
         cursor.execute('''
-            INSERT INTO sessions (id, title, collection_name, model_name, created_at, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?)
-        ''', (session_id, title, collection_name, model_name, now, now))
+            INSERT INTO sessions (id, title, collection_name, model_name, user_id, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+        ''', (session_id, title, collection_name, model_name, user_id, now, now))
         conn.commit()
         conn.close()
         
@@ -107,22 +179,35 @@ class ChatStorage:
             model_name=model_name,
             created_at=now,
             updated_at=now,
-            message_count=0
+            message_count=0,
+            user_id=user_id
         )
+
     
-    def list_sessions(self, limit: int = 50) -> List[ChatSession]:
-        """세션 목록 (최근순)"""
+    def list_sessions(self, limit: int = 50, user_id: str = None) -> List[ChatSession]:
+        """세션 목록 (최근순, 사용자별 필터링)"""
         conn = self._get_conn()
         cursor = conn.cursor()
         
-        cursor.execute('''
-            SELECT s.*, COUNT(m.id) as message_count
-            FROM sessions s
-            LEFT JOIN messages m ON s.id = m.session_id
-            GROUP BY s.id
-            ORDER BY s.updated_at DESC
-            LIMIT ?
-        ''', (limit,))
+        if user_id:
+            cursor.execute('''
+                SELECT s.*, COUNT(m.id) as message_count
+                FROM sessions s
+                LEFT JOIN messages m ON s.id = m.session_id
+                WHERE s.user_id = ?
+                GROUP BY s.id
+                ORDER BY s.updated_at DESC
+                LIMIT ?
+            ''', (user_id, limit))
+        else:
+            cursor.execute('''
+                SELECT s.*, COUNT(m.id) as message_count
+                FROM sessions s
+                LEFT JOIN messages m ON s.id = m.session_id
+                GROUP BY s.id
+                ORDER BY s.updated_at DESC
+                LIMIT ?
+            ''', (limit,))
         
         sessions = []
         for row in cursor.fetchall():
@@ -133,7 +218,8 @@ class ChatStorage:
                 model_name=row['model_name'],
                 created_at=row['created_at'],
                 updated_at=row['updated_at'],
-                message_count=row['message_count']
+                message_count=row['message_count'],
+                user_id=row['user_id'] if 'user_id' in row.keys() else None
             ))
         
         conn.close()
@@ -165,7 +251,8 @@ class ChatStorage:
             model_name=row['model_name'],
             created_at=row['created_at'],
             updated_at=row['updated_at'],
-            message_count=row['message_count']
+            message_count=row['message_count'],
+            user_id=row['user_id'] if 'user_id' in row.keys() else None
         )
     
     def update_session(self, session_id: str, title: str = None, collection_name: str = None, model_name: str = None) -> bool:

@@ -10,9 +10,10 @@ DATA_DIR = BASE_DIR / "data"
 CHROMA_DB_PATH = DATA_DIR / "chroma_db"
 METADATA_PATH = DATA_DIR / "metadata"
 MODELS_PATH = DATA_DIR / "models"
+UPLOAD_DIR = DATA_DIR / "uploads"  # 업로드 파일 저장 디렉토리
 
 # 디렉토리 생성
-for path in [DATA_DIR, CHROMA_DB_PATH, METADATA_PATH, MODELS_PATH]:
+for path in [DATA_DIR, CHROMA_DB_PATH, METADATA_PATH, MODELS_PATH, UPLOAD_DIR]:
     path.mkdir(parents=True, exist_ok=True)
 
 # 문서 처리 설정
