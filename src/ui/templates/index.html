@@ -10,26 +10,27 @@
     <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
     <script>
         tailwind.config = {
+            darkMode: 'class',
             theme: {
                 extend: {
                     colors: {
                         surface: {
-                            50: '#fafafa',
-                            100: '#f4f4f5',
-                            200: '#e4e4e7',
-                            300: '#d4d4d8',
-                            400: '#a1a1aa',
-                            500: '#71717a',
-                            600: '#52525b',
-                            700: '#3f3f46',
-                            800: '#27272a',
-                            900: '#18181b',
-                            950: '#09090b',
+                            50: 'var(--color-surface-50)',
+                            100: 'var(--color-surface-100)',
+                            200: 'var(--color-surface-200)',
+                            300: 'var(--color-surface-300)',
+                            400: 'var(--color-surface-400)',
+                            500: 'var(--color-surface-500)',
+                            600: 'var(--color-surface-600)',
+                            700: 'var(--color-surface-700)',
+                            800: 'var(--color-surface-800)',
+                            900: 'var(--color-surface-900)',
+                            950: 'var(--color-surface-950)',
                         },
                         accent: {
-                            DEFAULT: '#6366f1',
-                            hover: '#818cf8',
-                            muted: '#4f46e5'
+                            DEFAULT: 'var(--color-accent)',
+                            hover: 'var(--color-accent-hover)',
+                            muted: 'var(--color-accent-muted)'
                         }
                     }
                 }
@@ -37,6 +38,43 @@
         }
     </script>
     <style>
+        :root {
+            /* Basic Dark Mode Colors (Default) */
+            --color-surface-50: #fafafa;
+            --color-surface-100: #f4f4f5;
+            --color-surface-200: #e4e4e7;
+            --color-surface-300: #d4d4d8;
+            --color-surface-400: #a1a1aa;
+            --color-surface-500: #71717a;
+            --color-surface-600: #52525b;
+            --color-surface-700: #3f3f46;
+            --color-surface-800: #27272a;
+            --color-surface-900: #18181b;
+            --color-surface-950: #09090b;
+            --color-accent: #6366f1;
+            --color-accent-hover: #818cf8;
+            --color-accent-muted: #4f46e5;
+        }
+
+        [data-theme="light"] {
+            /* Light Mode Colors (Inverted/Refined) */
+            --color-surface-50: #18181b;
+            --color-surface-100: #27272a;
+            --color-surface-200: #3f3f46;
+            --color-surface-300: #52525b;
+            --color-surface-400: #71717a;
+            --color-surface-500: #a1a1aa;
+            --color-surface-600: #d4d4d8;
+            --color-surface-700: #e4e4e7;
+            /* Borders */
+            --color-surface-800: #ffffff;
+            /* Cards */
+            --color-surface-900: #f4f4f5;
+            /* Sidebar */
+            --color-surface-950: #ffffff;
+            /* Main BG */
+        }
+
         * {
             font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
         }
@@ -46,13 +84,16 @@
             width: 6px;
             height: 6px;
         }
+
         ::-webkit-scrollbar-track {
             background: transparent;
         }
+
         ::-webkit-scrollbar-thumb {
             background: #3f3f46;
             border-radius: 3px;
         }
+
         ::-webkit-scrollbar-thumb:hover {
             background: #52525b;
         }
@@ -66,15 +107,58 @@
             overflow-x: auto;
             margin: 12px 0;
         }
+
         .prose code {
             font-family: 'SF Mono', 'Consolas', monospace;
             font-size: 13px;
         }
-        .prose p { margin-bottom: 8px; }
-        .prose ul, .prose ol { margin-left: 20px; margin-bottom: 8px; }
-        .prose h1, .prose h2, .prose h3 { font-weight: 600; margin: 16px 0 8px; }
-        .prose a { color: #818cf8; }
-        .prose a:hover { text-decoration: underline; }
+
+        .prose p {
+            margin-bottom: 8px;
+        }
+
+        .prose ul,
+        .prose ol {
+            margin-left: 20px;
+            margin-bottom: 8px;
+        }
+
+        .prose h1,
+        .prose h2,
+        .prose h3 {
+            font-weight: 600;
+            margin: 16px 0 8px;
+        }
+
+        .prose a {
+            color: #818cf8;
+        }
+
+        .prose a:hover {
+            text-decoration: underline;
+        }
+        
+        /* Code block with copy button */
+        .code-block-wrapper {
+            margin: 12px 0;
+            border-radius: 8px;
+            overflow: hidden;
+            border: 1px solid #27272a;
+        }
+        
+        .code-block-wrapper pre {
+            margin: 0 !important;
+            border: none !important;
+            border-radius: 0 !important;
+        }
+        
+        .code-block-header {
+            background: #1f1f23;
+        }
+        
+        .copy-code-btn:hover {
+            color: #a5b4fc;
+        }
 
         /* Auto-resize textarea */
         .chat-textarea {
@@ -82,23 +166,40 @@
             overflow-y: hidden;
             line-height: 1.5;
         }
+
         .chat-textarea:focus {
             outline: none;
         }
 
         /* Animations */
         @keyframes pulse-subtle {
-            0%, 100% { opacity: 1; }
-            50% { opacity: 0.5; }
+
+            0%,
+            100% {
+                opacity: 1;
+            }
+
+            50% {
+                opacity: 0.5;
+            }
         }
+
         .animate-pulse-subtle {
             animation: pulse-subtle 2s ease-in-out infinite;
         }
 
         @keyframes slideIn {
-            from { opacity: 0; transform: translateY(10px); }
-            to { opacity: 1; transform: translateY(0); }
+            from {
+                opacity: 0;
+                transform: translateY(10px);
+            }
+
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
         }
+
         .animate-slideIn {
             animation: slideIn 0.2s ease-out;
         }
@@ -107,44 +208,65 @@
         .session-item {
             transition: all 0.15s ease;
         }
+
         .session-item:hover {
             background: #27272a;
         }
+
         .session-item.active {
             background: #3f3f46;
             border-left: 2px solid #6366f1;
         }
 
         /* Hide copy button while AI is responding */
-        .typing-cursor ~ button {
+        .typing-cursor~button {
             display: none !important;
         }
     </style>
 </head>
 
 <body class="bg-surface-950 h-screen flex overflow-hidden text-surface-200">
-    
+
     <!-- Sidebar -->
-    <aside class="w-72 bg-surface-900 border-r border-surface-800 flex flex-col flex-shrink-0">
-        
+    <aside id="mainSidebar"
+        class="w-72 bg-surface-900 border-r border-surface-800 flex flex-col flex-shrink-0 transition-all duration-300 ease-in-out">
+
         <!-- Logo & New Chat -->
         <div class="p-4 border-b border-surface-800">
             <div class="flex items-center justify-between mb-4">
-                <h1 class="text-base font-semibold text-white">문서 어시스턴트</h1>
+                <button onclick="toggleSidebar()"
+                    class="text-surface-500 hover:text-surface-200 transition-colors mr-2">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                            d="M4 6h16M4 12h16M4 18h16" />
+                    </svg>
+                </button>
+                <h1 class="text-base font-semibold text-surface-100">문서 어시스턴트</h1>
+                <div class="flex-1"></div>
+                <button onclick="toggleTheme()" class="text-surface-500 hover:text-yellow-400 transition-colors mr-2"
+                    title="테마 변경">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                            d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z" />
+                    </svg>
+                </button>
                 {% if user %}
                 <div class="flex items-center gap-2">
-                    <span class="text-xs text-surface-400">{{ user.username }}</span>
-                    <button onclick="logout()" class="text-surface-500 hover:text-red-400 transition-colors" title="로그아웃">
+                    <button onclick="logout()" class="text-surface-500 hover:text-red-400 transition-colors"
+                        title="로그아웃">
                         <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
                         </svg>
                     </button>
                 </div>
                 {% else %}
-                <button onclick="openLoginModal()" class="text-xs text-accent hover:text-accent-hover transition-colors">로그인</button>
+                <button onclick="openLoginModal()"
+                    class="text-xs text-accent hover:text-accent-hover transition-colors">로그인</button>
                 {% endif %}
             </div>
-            <button onclick="clearChat()" class="w-full py-2.5 px-4 bg-surface-800 hover:bg-surface-700 text-surface-200 rounded-lg text-sm font-medium transition-all flex items-center justify-center gap-2 border border-surface-700 hover:border-surface-600">
+            <button onclick="clearChat()"
+                class="w-full py-2.5 px-4 bg-surface-800 hover:bg-surface-700 text-surface-200 rounded-lg text-sm font-medium transition-all flex items-center justify-center gap-2 border border-surface-700 hover:border-surface-600">
                 <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
                 </svg>
@@ -154,12 +276,13 @@
 
         <!-- Settings Sections -->
         <div class="flex-1 overflow-y-auto p-4 space-y-5">
-            
+
             <!-- Model Section -->
             <section>
                 <label class="block text-[11px] font-medium text-surface-500 uppercase tracking-wider mb-2">모델</label>
                 <div class="flex gap-2">
-                    <select id="modelSelect" onchange="loadModel()" class="flex-1 px-3 py-2 bg-surface-800 border border-surface-700 rounded-lg text-sm text-surface-200 focus:outline-none focus:border-accent transition-colors">
+                    <select id="modelSelect" onchange="loadModel()"
+                        class="flex-1 px-3 py-2 bg-surface-800 border border-surface-700 rounded-lg text-sm text-surface-200 focus:outline-none focus:border-accent transition-colors">
                         <option value="">{% if models %}모델 선택{% else %}설치된 모델 없음{% endif %}</option>
                         {% for model in models %}
                         <option value="{{ model.name }}" data-vision="{{ model.is_vision }}">
@@ -167,45 +290,61 @@
                         </option>
                         {% endfor %}
                     </select>
-                    <button onclick="openModelManager()" class="p-2 bg-surface-800 border border-surface-700 rounded-lg text-surface-400 hover:text-white hover:border-surface-600 transition-all" title="모델 관리">
+                    <button onclick="openModelManager()"
+                        class="p-2 bg-surface-800 border border-surface-700 rounded-lg text-surface-400 hover:text-white hover:border-surface-600 transition-all"
+                        title="모델 관리">
                         <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
                         </svg>
                     </button>
                 </div>
-                <div id="modelStatus" class="text-[11px] text-surface-500 mt-1.5 px-0.5">{% if models %}모델을 선택하세요{% else %}모델을 먼저 다운로드하세요{% endif %}</div>
+                <div id="modelStatus" class="text-[11px] text-surface-500 mt-1.5 px-0.5">{% if models %}모델을 선택하세요{% else
+                    %}모델을 먼저 다운로드하세요{% endif %}</div>
             </section>
 
             <!-- Folder Section -->
             <section>
                 <label class="block text-[11px] font-medium text-surface-500 uppercase tracking-wider mb-2">문서</label>
                 <div class="grid grid-cols-2 gap-1.5 mb-2">
-                    <button onclick="browsePath('')" class="py-1.5 px-2 bg-surface-800 border border-surface-700 rounded text-[11px] text-surface-400 hover:text-white hover:border-surface-600 transition-all">드라이브</button>
-                    <button onclick="goBack()" class="py-1.5 px-2 bg-surface-800 border border-surface-700 rounded text-[11px] text-surface-400 hover:text-white hover:border-surface-600 transition-all">상위</button>
-                    <button onclick="createFolder()" class="py-1.5 px-2 bg-surface-800 border border-surface-700 rounded text-[11px] text-surface-400 hover:text-white hover:border-surface-600 transition-all">+ 폴더</button>
-                    <button onclick="goUploadDir()" class="py-1.5 px-2 bg-accent/20 border border-accent/40 rounded text-[11px] text-accent hover:bg-accent/30 transition-all">업로드</button>
+                    <button onclick="browsePath('')"
+                        class="py-1.5 px-2 bg-surface-800 border border-surface-700 rounded text-[11px] text-surface-400 hover:text-white hover:border-surface-600 transition-all">드라이브</button>
+                    <button onclick="goBack()"
+                        class="py-1.5 px-2 bg-surface-800 border border-surface-700 rounded text-[11px] text-surface-400 hover:text-white hover:border-surface-600 transition-all">상위</button>
+                    <button onclick="createFolder()"
+                        class="py-1.5 px-2 bg-surface-800 border border-surface-700 rounded text-[11px] text-surface-400 hover:text-white hover:border-surface-600 transition-all">+
+                        폴더</button>
+                    <button onclick="goUploadDir()"
+                        class="py-1.5 px-2 bg-surface-800 border border-surface-700 rounded text-[11px] text-accent hover:text-accent-hover hover:border-surface-600 transition-all">업로드</button>
                 </div>
-                
+
                 <input type="file" id="uploadInput" multiple hidden onchange="uploadFiles()">
-                <button onclick="document.getElementById('uploadInput').click()" class="w-full py-2 px-3 mb-2 bg-accent hover:bg-accent-hover text-white rounded-lg text-xs font-medium transition-all flex items-center justify-center gap-2">
+                <button onclick="document.getElementById('uploadInput').click()"
+                    class="w-full py-2 px-3 mb-2 bg-accent hover:bg-accent-hover text-white rounded-lg text-xs font-medium transition-all flex items-center justify-center gap-2">
                     <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                            d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
                     </svg>
                     파일 업로드
                 </button>
-                
-                <div id="folderList" class="bg-surface-800 border border-surface-700 rounded-lg max-h-28 overflow-y-auto mb-2"></div>
-                
+
+                <div id="folderList"
+                    class="bg-surface-800 border border-surface-700 rounded-lg max-h-28 overflow-y-auto mb-2"></div>
+
                 <div class="relative mb-2">
-                    <input type="text" id="folderPath" placeholder="경로" class="w-full px-3 py-2 pr-8 bg-surface-800 border border-surface-700 rounded-lg text-sm text-surface-200 placeholder-surface-500 focus:outline-none focus:border-accent transition-colors">
-                    <button onclick="browsePath(document.getElementById('folderPath').value)" class="absolute right-2 top-1/2 -translate-y-1/2 text-surface-500 hover:text-white transition-colors">
+                    <input type="text" id="folderPath" placeholder="경로"
+                        class="w-full px-3 py-2 pr-8 bg-surface-800 border border-surface-700 rounded-lg text-sm text-surface-200 placeholder-surface-500 focus:outline-none focus:border-accent transition-colors">
+                    <button onclick="browsePath(document.getElementById('folderPath').value)"
+                        class="absolute right-2 top-1/2 -translate-y-1/2 text-surface-500 hover:text-white transition-colors">
                         <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
                         </svg>
                     </button>
                 </div>
-                
-                <button onclick="startIndexing()" id="indexBtn" class="w-full py-2 px-4 bg-accent hover:bg-accent-hover text-white rounded-lg text-sm font-medium transition-all">
+
+                <button onclick="startIndexing()" id="indexBtn"
+                    class="w-full py-2 px-4 bg-accent hover:bg-accent-hover text-white rounded-lg text-sm font-medium transition-all">
                     인덱싱
                 </button>
                 <div id="indexStatus" class="text-[11px] text-surface-500 mt-1.5 px-0.5">폴더 선택 후 인덱싱</div>
@@ -214,7 +353,8 @@
             <!-- Collection Section -->
             <section>
                 <label class="block text-[11px] font-medium text-surface-500 uppercase tracking-wider mb-2">컬렉션</label>
-                <select id="collectionSelect" onchange="selectCollection()" class="w-full bg-surface-800 border border-surface-700 rounded-lg px-3 py-2 text-sm text-surface-200 focus:outline-none focus:border-accent transition-colors">
+                <select id="collectionSelect" onchange="selectCollection()"
+                    class="w-full bg-surface-800 border border-surface-700 rounded-lg px-3 py-2 text-sm text-surface-200 focus:outline-none focus:border-accent transition-colors">
                     <option value="">컬렉션 선택</option>
                     {% for coll in collections %}
                     <option value="{{ coll.name }}">{{ coll.name }} ({{ coll.count }})</option>
@@ -225,34 +365,43 @@
 
             <!-- Advanced Settings -->
             <section>
-                <button onclick="toggleAdvancedSettings()" class="w-full py-2 px-3 bg-surface-800 border border-surface-700 rounded-lg text-sm text-surface-400 hover:text-white hover:border-surface-600 transition-all flex items-center justify-between">
+                <button onclick="toggleAdvancedSettings()"
+                    class="w-full py-2 px-3 bg-surface-800 border border-surface-700 rounded-lg text-sm text-surface-400 hover:text-white hover:border-surface-600 transition-all flex items-center justify-between">
                     <span>고급 설정</span>
-                    <svg id="advancedArrow" class="w-4 h-4 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <svg id="advancedArrow" class="w-4 h-4 transition-transform" fill="none" stroke="currentColor"
+                        viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
                     </svg>
                 </button>
-                <div id="advancedSettings" class="hidden mt-2 p-3 bg-surface-800 border border-surface-700 rounded-lg space-y-3">
+                <div id="advancedSettings"
+                    class="hidden mt-2 p-3 bg-surface-800 border border-surface-700 rounded-lg space-y-3">
                     <div>
                         <label class="flex justify-between text-[11px] text-surface-400 mb-1">
                             <span>검색 문서 수</span><span id="kValue">7</span>
                         </label>
-                        <input type="range" id="kSlider" min="1" max="20" value="7" class="w-full accent-accent h-1.5" oninput="document.getElementById('kValue').textContent=this.value">
+                        <input type="range" id="kSlider" min="1" max="20" value="7" class="w-full accent-accent h-1.5"
+                            oninput="document.getElementById('kValue').textContent=this.value">
                     </div>
                     <div>
                         <label class="flex justify-between text-[11px] text-surface-400 mb-1">
                             <span>최대 토큰</span><span id="tokenValue">2048</span>
                         </label>
-                        <input type="range" id="tokenSlider" min="128" max="8192" step="128" value="2048" class="w-full accent-accent h-1.5" oninput="document.getElementById('tokenValue').textContent=this.value">
+                        <input type="range" id="tokenSlider" min="128" max="8192" step="128" value="2048"
+                            class="w-full accent-accent h-1.5"
+                            oninput="document.getElementById('tokenValue').textContent=this.value">
                     </div>
                     <div>
                         <label class="flex justify-between text-[11px] text-surface-400 mb-1">
                             <span>창의성</span><span id="tempValue">0.7</span>
                         </label>
-                        <input type="range" id="tempSlider" min="0" max="1" step="0.1" value="0.7" class="w-full accent-accent h-1.5" oninput="document.getElementById('tempValue').textContent=this.value">
+                        <input type="range" id="tempSlider" min="0" max="1" step="0.1" value="0.7"
+                            class="w-full accent-accent h-1.5"
+                            oninput="document.getElementById('tempValue').textContent=this.value">
                     </div>
                     <div>
-                        <label class="text-[11px] text-surface-400 mb-1 block">시스템 프롬프트</label>
-                        <textarea id="systemPrompt" rows="3" class="w-full px-2.5 py-2 bg-surface-900 border border-surface-700 rounded-lg text-xs text-surface-300 resize-none focus:outline-none focus:border-accent transition-colors">{{ default_system_prompt }}</textarea>
+                        <label class="text-[11px] text-surface-400 mb-1 block">추가 지시사항 (선택)</label>
+                        <textarea id="systemPrompt" rows="2" placeholder="예: 표 형식으로 정리해줘 / 1000자 이내로 요약해줘"
+                            class="w-full px-2.5 py-2 bg-surface-900 border border-surface-700 rounded-lg text-xs text-surface-300 resize-none focus:outline-none focus:border-accent transition-colors placeholder:text-surface-500 dark:placeholder:text-surface-500"></textarea>
                     </div>
                 </div>
             </section>
@@ -261,13 +410,16 @@
             <section class="flex-1 flex flex-col min-h-0">
                 <div class="flex items-center justify-between mb-2">
                     <label class="text-[11px] font-medium text-surface-500 uppercase tracking-wider">이전 대화</label>
-                    <button onclick="refreshSessions()" class="text-surface-500 hover:text-white transition-colors" title="새로고침">
+                    <button onclick="refreshSessions()" class="text-surface-500 hover:text-white transition-colors"
+                        title="새로고침">
                         <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
                         </svg>
                     </button>
                 </div>
-                <div id="sessionList" class="flex-1 overflow-y-auto bg-surface-800 border border-surface-700 rounded-lg min-h-[120px] max-h-48">
+                <div id="sessionList"
+                    class="flex-1 overflow-y-auto bg-surface-800 border border-surface-700 rounded-lg min-h-[120px] max-h-48">
                     <div class="p-3 text-center text-surface-500 text-xs">로딩 중...</div>
                 </div>
             </section>
@@ -275,17 +427,24 @@
     </aside>
 
     <!-- Main Chat Area -->
-    <main class="flex-1 flex flex-col min-w-0 bg-surface-950">
-        
+    <main class="flex-1 flex flex-col min-w-0 bg-surface-950 relative">
+        <button id="sidebarShowBtn" onclick="toggleSidebar()"
+            class="absolute top-4 left-4 p-2 bg-surface-800 border border-surface-700 rounded-lg text-surface-400 hover:text-surface-200 z-10 transition-all hidden shadow-md">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16" />
+            </svg>
+        </button>
         <!-- Messages Container -->
         <div id="chatMessages" class="flex-1 overflow-y-auto">
             <div id="emptyState" class="h-full flex flex-col items-center justify-center text-center px-4">
-                <div class="w-14 h-14 bg-surface-800 rounded-2xl flex items-center justify-center mb-4 border border-surface-700">
+                <div
+                    class="w-14 h-14 bg-surface-800 rounded-2xl flex items-center justify-center mb-4 border border-surface-700">
                     <svg class="w-7 h-7 text-accent" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"
+                            d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
                     </svg>
                 </div>
-                <h2 class="text-lg font-semibold text-white mb-2">Document Assistant</h2>
+                <h2 class="text-lg font-semibold text-surface-100 mb-2">Document Assistant</h2>
                 <p class="text-surface-400 text-sm max-w-sm leading-relaxed">
                     모델을 로드하고, 문서를 인덱싱한 후<br>컬렉션을 선택하면 질문할 수 있습니다.
                 </p>
@@ -295,36 +454,39 @@
         <!-- Input Area -->
         <div class="p-4 bg-surface-900 border-t border-surface-800">
             <div class="max-w-4xl mx-auto">
-                
+
                 <!-- Attachment Preview -->
                 <div id="attachmentPreview" class="hidden flex gap-2 mb-3 flex-wrap"></div>
 
                 <!-- Input Container -->
-                <div class="relative bg-surface-900 border border-surface-700 rounded-2xl transition-all duration-200 focus-within:border-accent/50 focus-within:ring-1 focus-within:ring-accent/20">
-                    
+                <div
+                    class="relative bg-surface-900 border border-surface-700 rounded-2xl transition-all duration-200 focus-within:border-accent/50 focus-within:ring-1 focus-within:ring-accent/20">
+
                     <div class="flex items-end p-2">
                         <!-- Attach Button -->
-                        <input type="file" id="fileInput" class="hidden" accept="image/*,.pdf,.docx,.txt,.md" onchange="handleFileSelect(event)" multiple>
-                        <button id="attachBtn" onclick="document.getElementById('fileInput').click()" 
-                            class="p-2.5 rounded-xl transition-all flex-shrink-0 disabled:cursor-not-allowed text-surface-600 hover:text-surface-400 disabled:text-surface-700 disabled:hover:text-surface-700" 
+                        <input type="file" id="fileInput" class="hidden" accept="image/*,.pdf,.docx,.txt,.md"
+                            onchange="handleFileSelect(event)" multiple>
+                        <button id="attachBtn" onclick="document.getElementById('fileInput').click()"
+                            class="p-2.5 rounded-xl transition-all flex-shrink-0 disabled:cursor-not-allowed text-surface-600 hover:text-surface-400 disabled:text-surface-700 disabled:hover:text-surface-700"
                             title="비전 모델 필요" disabled>
                             <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" />
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                    d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" />
                             </svg>
                         </button>
 
                         <!-- Textarea -->
-                        <textarea id="chatInput" rows="1" 
-                            class="chat-textarea flex-1 bg-transparent text-surface-100 placeholder-surface-500 px-3 py-2.5 text-[15px] min-h-[44px] max-h-[168px]" 
-                            placeholder="무엇이든 물어보세요..."
-                            onkeydown="handleInputKeydown(event)"
+                        <textarea id="chatInput" rows="1"
+                            class="chat-textarea flex-1 bg-transparent text-surface-100 placeholder-surface-500 px-3 py-2.5 text-[15px] min-h-[44px] max-h-[168px]"
+                            placeholder="무엇이든 물어보세요..." onkeydown="handleInputKeydown(event)"
                             oninput="autoResize(this)"></textarea>
 
                         <!-- Send Button -->
-                        <button id="sendBtn" onclick="sendChat()" 
+                        <button id="sendBtn" onclick="sendChat()"
                             class="p-2.5 bg-accent hover:bg-accent-hover text-white rounded-xl transition-all flex-shrink-0 disabled:bg-surface-700 disabled:text-surface-500 disabled:cursor-not-allowed">
                             <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                    d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
                             </svg>
                         </button>
                     </div>
@@ -336,19 +498,22 @@
     </main>
 
     <!-- Model Manager Modal -->
-    <div id="modelModal" class="hidden fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center">
-        <div class="bg-surface-900 rounded-2xl w-[560px] max-h-[75vh] overflow-hidden flex flex-col border border-surface-700 shadow-2xl animate-slideIn">
+    <div id="modelModal"
+        class="hidden fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center">
+        <div
+            class="bg-surface-900 rounded-2xl w-[560px] max-h-[75vh] overflow-hidden flex flex-col border border-surface-700 shadow-2xl animate-slideIn">
             <div class="p-4 border-b border-surface-700 flex justify-between items-center">
-                <h3 class="font-semibold text-white">모델 관리</h3>
-                <button onclick="closeModelManager()" class="text-surface-400 hover:text-white transition-colors">
+                <h3 class="font-semibold text-surface-50">모델 관리</h3>
+                <button onclick="closeModelManager()" class="text-surface-400 hover:text-surface-50 transition-colors">
                     <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                            d="M6 18L18 6M6 6l12 12" />
                     </svg>
                 </button>
             </div>
             <div class="p-4 border-b border-surface-800">
-                <input type="text" id="modelSearchInput" placeholder="모델 검색..." 
-                    class="w-full px-3 py-2.5 bg-surface-800 border border-surface-700 rounded-lg text-sm text-surface-200 placeholder-surface-500 focus:outline-none focus:border-accent transition-colors" 
+                <input type="text" id="modelSearchInput" placeholder="모델 검색..."
+                    class="w-full px-3 py-2.5 bg-surface-800 border border-surface-700 rounded-lg text-sm text-surface-200 placeholder-surface-500 focus:outline-none focus:border-accent transition-colors"
                     onkeyup="searchModels(this.value)">
             </div>
             <div id="modelList" class="flex-1 overflow-y-auto p-2 max-h-[380px]"></div>
@@ -359,37 +524,43 @@
     </div>
 
     <!-- Login Modal -->
-    <div id="loginModal" class="hidden fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center">
-        <div class="bg-surface-900 rounded-2xl w-[380px] overflow-hidden border border-surface-700 shadow-2xl animate-slideIn">
+    <div id="loginModal"
+        class="hidden fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center">
+        <div
+            class="bg-surface-900 rounded-2xl w-[380px] overflow-hidden border border-surface-700 shadow-2xl animate-slideIn">
             <div class="p-5 border-b border-surface-700 flex justify-between items-center">
-                <h3 class="font-semibold text-white">로그인</h3>
-                <button onclick="closeLoginModal()" class="text-surface-400 hover:text-white transition-colors">
+                <h3 class="font-semibold text-surface-50">로그인</h3>
+                <button onclick="closeLoginModal()" class="text-surface-400 hover:text-surface-50 transition-colors">
                     <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                            d="M6 18L18 6M6 6l12 12" />
                     </svg>
                 </button>
             </div>
 
             <!-- Tabs -->
             <div class="flex border-b border-surface-700">
-                <button onclick="switchAuthTab('login')" id="loginTab" class="flex-1 py-3 text-sm font-medium text-white bg-surface-800/50 border-b-2 border-accent">로그인</button>
-                <button onclick="switchAuthTab('register')" id="registerTab" class="flex-1 py-3 text-sm font-medium text-surface-400 hover:text-white transition-colors border-b-2 border-transparent">회원가입</button>
+                <button onclick="switchAuthTab('login')" id="loginTab"
+                    class="flex-1 py-3 text-sm font-medium text-surface-50 bg-surface-800/50 border-b-2 border-accent">로그인</button>
+                <button onclick="switchAuthTab('register')" id="registerTab"
+                    class="flex-1 py-3 text-sm font-medium text-surface-400 hover:text-surface-50 transition-colors border-b-2 border-transparent">회원가입</button>
             </div>
 
             <!-- Login Form -->
             <div id="loginForm" class="p-5 space-y-4">
                 <div>
                     <label class="block text-[11px] font-medium text-surface-400 mb-1.5">아이디</label>
-                    <input type="text" id="loginUsername" placeholder="아이디 입력" 
+                    <input type="text" id="loginUsername" placeholder="아이디 입력"
                         class="w-full px-4 py-2.5 bg-surface-800 border border-surface-700 rounded-lg text-sm text-surface-200 placeholder-surface-500 focus:outline-none focus:border-accent transition-colors">
                 </div>
                 <div>
                     <label class="block text-[11px] font-medium text-surface-400 mb-1.5">비밀번호</label>
-                    <input type="password" id="loginPassword" placeholder="비밀번호 입력" 
+                    <input type="password" id="loginPassword" placeholder="비밀번호 입력"
                         class="w-full px-4 py-2.5 bg-surface-800 border border-surface-700 rounded-lg text-sm text-surface-200 placeholder-surface-500 focus:outline-none focus:border-accent transition-colors">
                 </div>
                 <div id="loginError" class="hidden text-red-400 text-xs"></div>
-                <button onclick="doLogin()" class="w-full py-2.5 bg-accent hover:bg-accent-hover text-white rounded-lg font-medium transition-all">
+                <button onclick="doLogin()"
+                    class="w-full py-2.5 bg-accent hover:bg-accent-hover text-white rounded-lg font-medium transition-all">
                     로그인
                 </button>
             </div>
@@ -398,21 +569,22 @@
             <div id="registerForm" class="hidden p-5 space-y-4">
                 <div>
                     <label class="block text-[11px] font-medium text-surface-400 mb-1.5">아이디</label>
-                    <input type="text" id="regUsername" placeholder="아이디 (영문, 숫자)" 
+                    <input type="text" id="regUsername" placeholder="아이디 (영문, 숫자)"
                         class="w-full px-4 py-2.5 bg-surface-800 border border-surface-700 rounded-lg text-sm text-surface-200 placeholder-surface-500 focus:outline-none focus:border-accent transition-colors">
                 </div>
                 <div>
                     <label class="block text-[11px] font-medium text-surface-400 mb-1.5">비밀번호</label>
-                    <input type="password" id="regPassword" placeholder="비밀번호" 
+                    <input type="password" id="regPassword" placeholder="비밀번호"
                         class="w-full px-4 py-2.5 bg-surface-800 border border-surface-700 rounded-lg text-sm text-surface-200 placeholder-surface-500 focus:outline-none focus:border-accent transition-colors">
                 </div>
                 <div>
                     <label class="block text-[11px] font-medium text-surface-400 mb-1.5">비밀번호 확인</label>
-                    <input type="password" id="regPasswordConfirm" placeholder="비밀번호 다시 입력" 
+                    <input type="password" id="regPasswordConfirm" placeholder="비밀번호 다시 입력"
                         class="w-full px-4 py-2.5 bg-surface-800 border border-surface-700 rounded-lg text-sm text-surface-200 placeholder-surface-500 focus:outline-none focus:border-accent transition-colors">
                 </div>
                 <div id="registerError" class="hidden text-red-400 text-xs"></div>
-                <button onclick="doRegister()" class="w-full py-2.5 bg-green-600 hover:bg-green-500 text-white rounded-lg font-medium transition-all">
+                <button onclick="doRegister()"
+                    class="w-full py-2.5 bg-green-600 hover:bg-green-500 text-white rounded-lg font-medium transition-all">
                     회원가입
                 </button>
             </div>
@@ -431,7 +603,34 @@
         document.addEventListener('DOMContentLoaded', () => {
             browsePath('');
             refreshSessions();
+            initTheme();
         });
+
+        // === Theme & Sidebar ===
+        function initTheme() {
+            const savedTheme = localStorage.getItem('theme') || 'dark';
+            document.documentElement.setAttribute('data-theme', savedTheme);
+        }
+
+        function toggleTheme() {
+            const current = document.documentElement.getAttribute('data-theme');
+            const next = current === 'dark' ? 'light' : 'dark';
+            document.documentElement.setAttribute('data-theme', next);
+            localStorage.setItem('theme', next);
+        }
+
+        function toggleSidebar() {
+            const sidebar = document.getElementById('mainSidebar');
+            const showBtn = document.getElementById('sidebarShowBtn');
+
+            if (sidebar.style.marginLeft === '-18rem') {
+                sidebar.style.marginLeft = '0';
+                showBtn.classList.add('hidden');
+            } else {
+                sidebar.style.marginLeft = '-18rem';
+                showBtn.classList.remove('hidden');
+            }
+        }
 
         // === Input Handling ===
         function autoResize(el) {
@@ -440,10 +639,10 @@
             const minHeight = 44;
             const maxLines = 6;
             const maxHeight = lineHeight * maxLines + 20;
-            
+
             const newHeight = Math.min(Math.max(el.scrollHeight, minHeight), maxHeight);
             el.style.height = newHeight + 'px';
-            
+
             // Show/hide scrollbar
             el.style.overflowY = el.scrollHeight > maxHeight ? 'auto' : 'hidden';
         }
@@ -461,16 +660,16 @@
                 const res = await fetch('/api/browse?path=' + encodeURIComponent(path));
                 const data = await res.json();
                 if (data.error) return;
-                
+
                 currentPath = data.current;
                 document.getElementById('folderPath').value = currentPath;
-                
+
                 const list = document.getElementById('folderList');
                 if (!data.items || data.items.length === 0) {
                     list.innerHTML = '<div class="p-3 text-center text-surface-500 text-xs">빈 폴더</div>';
                     return;
                 }
-                
+
                 list.innerHTML = data.items.map(item => {
                     const showActions = item.can_delete;
                     const actionBtns = showActions ? `
@@ -483,15 +682,15 @@
                             <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
                         </button>
                     ` : '';
-                    
+
                     if (item.is_dir) {
-                        return `<div class="px-3 py-2 hover:bg-surface-700 cursor-pointer text-xs text-surface-300 flex items-center gap-2 border-b border-surface-700/50 last:border-0" onclick="browsePath('${item.path.replace(/\\/g, '\\\\')}')">
+                        return `<div class="px-3 py-2 hover:bg-surface-700 cursor-pointer text-xs text-surface-300 flex items-center gap-2 border-b border-surface-900 last:border-0" onclick="browsePath('${item.path.replace(/\\/g, '\\\\')}')">
                             <svg class="w-4 h-4 text-yellow-500 flex-shrink-0" fill="currentColor" viewBox="0 0 24 24"><path d="M10 4H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2h-8l-2-2z"/></svg>
                             <span class="truncate flex-1">${item.name}</span>
                             <div class="flex gap-0.5">${actionBtns}</div>
                         </div>`;
                     } else {
-                        return `<div class="px-3 py-2 hover:bg-surface-700 text-xs text-surface-400 flex items-center gap-2 border-b border-surface-700/50 last:border-0">
+                        return `<div class="px-3 py-2 hover:bg-surface-700 text-xs text-surface-400 flex items-center gap-2 border-b border-surface-900 last:border-0">
                             <svg class="w-4 h-4 text-surface-500 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
                             <span class="truncate flex-1">${item.name}</span>
                             <span class="text-[10px] text-surface-600">${formatSize(item.size)}</span>
@@ -783,7 +982,7 @@
                                     cursorEl?.remove();
                                     textEl.innerHTML = renderMarkdown(fullText);
                                     if (sources.length > 0) {
-                                        const links = sources.map(s => 
+                                        const links = sources.map(s =>
                                             `<span class="text-accent hover:underline cursor-pointer" onclick="openFileFolder('${s.path.replace(/\\/g, '\\\\')}')">${s.filename}</span>`
                                         ).join(', ');
                                         textEl.innerHTML += `<div class="mt-3 pt-3 border-t border-surface-700 text-xs text-surface-400">Sources: ${links}</div>`;
@@ -847,7 +1046,48 @@
         }
 
         function renderMarkdown(text) {
-            return typeof marked !== 'undefined' ? marked.parse(text) : escapeHtml(text);
+            if (typeof marked === 'undefined') return escapeHtml(text);
+            
+            // marked로 렌더링
+            let html = marked.parse(text);
+            
+            // 코드 블록에 복사 버튼 추가
+            html = html.replace(/<pre><code([^>]*)>(([\s\S]*?))<\/code><\/pre>/g, (match, attrs, code) => {
+                const langMatch = attrs.match(/class="language-([^"]+)"/);
+                const lang = langMatch ? langMatch[1] : '';
+                const escapedCode = code.replace(/</g, '&lt;').replace(/>/g, '&gt;');
+                const codeId = 'code-' + Math.random().toString(36).substr(2, 9);
+                return `<div class="code-block-wrapper relative group">
+                    <div class="code-block-header flex items-center justify-between px-3 py-1.5 bg-surface-800 border-b border-surface-700 rounded-t-lg">
+                        <span class="text-xs text-surface-500">${lang || 'code'}</span>
+                        <button onclick="copyCodeBlock('${codeId}')" class="copy-code-btn text-xs text-surface-500 hover:text-white transition-colors flex items-center gap-1">
+                            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"/>
+                            </svg>
+                            <span>복사</span>
+                        </button>
+                    </div>
+                    <pre class="!mt-0 !rounded-t-none"><code id="${codeId}"${attrs}>${code}</code></pre>
+                </div>`;
+            });
+            
+            return html;
+        }
+        
+        function copyCodeBlock(codeId) {
+            const codeEl = document.getElementById(codeId);
+            if (!codeEl) return;
+            
+            const text = codeEl.textContent;
+            navigator.clipboard.writeText(text).then(() => {
+                // 버튼 텍스트 임시 변경
+                const btn = codeEl.closest('.code-block-wrapper').querySelector('.copy-code-btn span');
+                if (btn) {
+                    const original = btn.textContent;
+                    btn.textContent = '복사됨!';
+                    setTimeout(() => btn.textContent = original, 1500);
+                }
+            });
         }
 
         async function clearChat() {
@@ -920,7 +1160,7 @@
                     } else {
                         let sourcesHtml = '';
                         if (m.sources?.length > 0) {
-                            const links = m.sources.map(s => 
+                            const links = m.sources.map(s =>
                                 `<span class="text-accent hover:underline cursor-pointer" onclick="openFileFolder('${s.path.replace(/\\/g, '\\\\')}')">${s.filename}</span>`
                             ).join(', ');
                             sourcesHtml = `<div class="mt-3 pt-3 border-t border-surface-700 text-xs text-surface-400">참조: ${links}</div>`;
@@ -984,11 +1224,38 @@
             if (attachments.length === 0) { preview.classList.add('hidden'); return; }
             preview.classList.remove('hidden');
             preview.innerHTML = attachments.map((a, i) => {
+                const commonClasses = "relative w-14 h-14 rounded-lg border border-surface-700 overflow-hidden flex items-center justify-center flex-shrink-0 group cursor-pointer hover:border-accent transition-colors";
+                const removeBtn = `<button onclick="event.stopPropagation(); removeAttachment(${i})" class="absolute top-0.5 right-0.5 w-4 h-4 bg-black/50 hover:bg-red-500 text-white rounded-full text-[10px] flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity z-10">x</button>`;
+
+                // Image
                 if (a.type === 'image') {
-                    return `<div class="relative"><img src="${a.preview}" class="h-12 rounded-lg border border-surface-700"><button onclick="removeAttachment(${i})" class="absolute -top-1 -right-1 w-4 h-4 bg-red-500 text-white rounded-full text-[10px] flex items-center justify-center">x</button></div>`;
+                    return `<div class="${commonClasses}" onclick="openImageModal('${a.preview}')">
+                        <img src="${a.preview}" class="w-full h-full object-cover">
+                        ${removeBtn}
+                    </div>`;
                 }
-                return `<div class="relative px-3 py-2 bg-surface-800 border border-surface-700 rounded-lg text-xs text-surface-300">${a.name}<button onclick="removeAttachment(${i})" class="absolute -top-1 -right-1 w-4 h-4 bg-red-500 text-white rounded-full text-[10px] flex items-center justify-center">x</button></div>`;
+                // Document
+                else {
+                    let icon = '<svg class="w-6 h-6 text-surface-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z"/></svg>';
+                    if (a.name.endsWith('.pdf')) icon = '<svg class="w-6 h-6 text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z"/></svg>';
+                    if (a.name.endsWith('.txt')) icon = '<svg class="w-6 h-6 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>';
+
+                    return `<div class="${commonClasses} bg-surface-800" title="${a.name}">
+                        ${icon}
+                        <div class="absolute bottom-0 inset-x-0 bg-black/60 text-[8px] text-white px-1 py-0.5 truncate text-center">${a.name.split('.').pop()}</div>
+                        ${removeBtn}
+                    </div>`;
+                }
             }).join('');
+        }
+
+        function openImageModal(src) {
+            document.getElementById('imageModalImg').src = src;
+            document.getElementById('imageModal').classList.remove('hidden');
+        }
+
+        function closeImageModal() {
+            document.getElementById('imageModal').classList.add('hidden');
         }
 
         function removeAttachment(i) { attachments.splice(i, 1); updateAttachmentPreview(); }
@@ -1022,26 +1289,44 @@
             document.getElementById('modelModal').classList.add('hidden');
         }
 
+        // 모델 검색 debounce 및 요청 취소 처리
+        let searchTimeout = null;
+        let searchAbortController = null;
+
+        function debouncedSearchModels(query) {
+            if (searchTimeout) clearTimeout(searchTimeout);
+            searchTimeout = setTimeout(() => searchModels(query), 300);
+        }
+
         async function searchModels(query) {
             const list = document.getElementById('modelList');
             list.innerHTML = '<div class="text-center py-8 text-surface-500">검색 중...</div>';
+
+            // 이전 요청 취소
+            if (searchAbortController) searchAbortController.abort();
+            searchAbortController = new AbortController();
+
             try {
-                const res = await fetch('/api/models/search?q=' + encodeURIComponent(query));
+                const res = await fetch('/api/models/search?q=' + encodeURIComponent(query), { signal: searchAbortController.signal });
                 const data = await res.json();
                 if (!data.models?.length) { list.innerHTML = '<div class="text-center py-8 text-surface-500">결과 없음</div>'; return; }
                 list.innerHTML = data.models.map(m => `
                     <div class="flex items-center p-3 rounded-lg hover:bg-surface-800 transition-colors">
                         <div class="flex-1 min-w-0">
-                            <div class="font-medium text-white text-sm truncate">${m.name} ${m.vision ? '<span class="text-purple-400">[V]</span>' : ''}</div>
+                            <div class="font-medium text-surface-100 text-sm truncate">${m.name} ${m.vision ? '<span class="text-purple-400">[V]</span>' : ''}</div>
                             <div class="text-xs text-surface-500 truncate">${m.description || ''} (${m.size})</div>
                         </div>
                         ${m.installed
-                            ? `<button onclick="deleteModel('${m.name}')" class="px-3 py-1.5 bg-red-500/20 text-red-400 rounded-lg text-xs hover:bg-red-500/30 transition-colors">삭제</button>`
-                            : `<button onclick="pullModel('${m.name}')" class="px-3 py-1.5 bg-accent text-white rounded-lg text-xs hover:bg-accent-hover transition-colors" id="pull-${m.name.replace(/[:.]/g, '_')}">다운로드</button>`
-                        }
+                        ? `<button onclick="deleteModel('${m.name}')" class="px-3 py-1.5 bg-red-500/20 text-red-400 rounded-lg text-xs hover:bg-red-500/30 transition-colors">삭제</button>`
+                        : `<button onclick="pullModel('${m.name}')" class="px-3 py-1.5 bg-accent text-white rounded-lg text-xs hover:bg-accent-hover transition-colors" id="pull-${m.name.replace(/[:.]/g, '_')}">다운로드</button>`
+                    }
                     </div>
                 `).join('');
-            } catch (e) { list.innerHTML = '<div class="text-center py-8 text-red-400">Error: ' + e.message + '</div>'; }
+            } catch (e) { 
+                // abort 에러는 무시 (새 검색으로 취소된 경우)
+                if (e.name === 'AbortError') return;
+                list.innerHTML = '<div class="text-center py-8 text-red-400">Error: ' + e.message + '</div>'; 
+            }
         }
 
         async function pullModel(modelName) {
@@ -1064,7 +1349,7 @@
                                 const data = JSON.parse(line.slice(6));
                                 if (btn) btn.textContent = data.progress > 0 ? data.progress + '%' : (data.status || '준비 중...');
                                 if (data.status === 'success' || data.status === 'error') break;
-                            } catch (e) {}
+                            } catch (e) { }
                         }
                     }
                 }
@@ -1212,4 +1497,5 @@
         document.getElementById('modelModal').addEventListener('click', e => { if (e.target === document.getElementById('modelModal')) closeModelManager(); });
     </script>
 </body>
+
 </html>

@@ -373,6 +373,30 @@ class ChatStorage:
         conn.close()
         return messages
     
+    def get_first_user_message(self, session_id: str) -> Optional[ChatMessage]:
+        """세션의 첫 번째 사용자 메시지 (핵심 주제 추출용)"""
+        conn = self._get_conn()
+        cursor = conn.cursor()
+        
+        cursor.execute('''
+            SELECT * FROM messages
+            WHERE session_id = ? AND role = 'user'
+            ORDER BY timestamp ASC
+            LIMIT 1
+        ''', (session_id,))
+        
+        row = cursor.fetchone()
+        conn.close()
+        
+        if row:
+            return ChatMessage(
+                role=row['role'],
+                content=row['content'],
+                timestamp=row['timestamp'],
+                sources=json.loads(row['sources']) if row['sources'] else None
+            )
+        return None
+    
     def clear_messages(self, session_id: str) -> bool:
         """세션의 모든 메시지 삭제"""
         conn = self._get_conn()

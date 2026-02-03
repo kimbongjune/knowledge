@@ -334,27 +334,13 @@ async def index(request: Request):
             # 잘못된 컬렉션은 건너뛰기
             continue
     
-    default_system_prompt = """당신은 창의적인 문서 작성 전문 AI입니다.
-
-**[핵심 주제]**: (시스템이 첫 번째 질문에서 자동 추출)
-
-## 핵심 규칙
-1. **주제 유지 필수** - [핵심 주제]를 절대 변경하지 마세요. 사용자가 "양식대로", "이어서" 등 짧은 지시를 해도 원래 주제를 유지
-2. **참고 문서의 주제가 달라도 무시** - 참고 문서가 다른 주제라도 현재 작업 주제와 다르면 완전히 무시
-3. 참고 문서의 양식/구조만 참고하고, 내용은 현재 주제에 맞게 새로 작성
-4. 이전 대화에서 작성 중이던 내용을 이어서 작성
-5. **반드시 한국어로 답변하세요**
-
-(이전 대화 맥락, 참고 문서, 랜덤 시드는 시스템이 자동으로 추가합니다)"""
-    
     response = templates.TemplateResponse("index.html", {
         "request": request,
         "models": [{"name": m.name, "size": m.size, "is_vision": m.is_vision} for m in models],
         "collections": collection_stats,
         "current_model": app_state.model_manager._current_model_name if app_state.model_manager else None,
         "current_collection": app_state.current_collection,
-        "user": {"id": user_id, "username": username} if user_id else None,
-        "default_system_prompt": default_system_prompt
+        "user": {"id": user_id, "username": username} if user_id else None
     })
     response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
     return response
@@ -573,17 +559,46 @@ async def chat(
             search_query = question
             topic_context = ""
             main_topic = ""  # 핵심 주제 (첫 질문에서 추출)
+            conversation_keywords = []  # 대화에서 추출한 키워드
+            recent_msgs = []  # 초기화
             
             if app_state.current_session_id:
-                recent_msgs = app_state.chat_storage.get_recent_messages(app_state.current_session_id, count=10)
+                # 첫 번째 사용자 메시지에서 핵심 주제 추출 (대화가 길어져도 유지)
+                first_msg = app_state.chat_storage.get_first_user_message(app_state.current_session_id)
+                if first_msg:
+                    main_topic = first_msg.content[:200]
+                
+                recent_msgs = app_state.chat_storage.get_recent_messages(app_state.current_session_id, count=10) or []
                 if recent_msgs:
-                    # 첫 번째 사용자 질문에서 핵심 주제 추출 (가장 중요)
+                    # 최근 대화에서 키워드 추출 (문서 필터링용)
                     user_msgs = [m for m in recent_msgs if m.role == "user"]
-                    if user_msgs:
-                        main_topic = user_msgs[0].content[:200]  # 첫 질문이 주제
                     
-                    # 현재 질문이 짧으면 (지시/요청) 이전 주제를 검색에 사용
-                    if len(question) < 50 and main_topic:
+                    # 대화에서 키워드 추출 (문서 필터링용)
+                    for msg in user_msgs:
+                        # 파일 타입 관련 키워드 추출
+                        if 'hwp' in msg.content.lower():
+                            conversation_keywords.append('hwp')
+                        if 'md' in msg.content.lower() or 'markdown' in msg.content.lower():
+                            conversation_keywords.append('md')
+                        if '설계서' in msg.content:
+                            conversation_keywords.append('설계서')
+                        if '기획서' in msg.content:
+                            conversation_keywords.append('기획서')
+                        if '인터페이스' in msg.content:
+                            conversation_keywords.append('인터페이스')
+                        if '통신' in msg.content:
+                            conversation_keywords.append('통신')
+                    
+                    # 현재 질문이 짧은 후속 지시인 경우 (예: "양식대로 해줘", "md는 안돼")
+                    # 검색 쿼리는 첫 질문(주제)을 우선 사용
+                    is_followup_instruction = len(question) < 80 and any(
+                        kw in question for kw in ['양식', '형식', '맞춰', '이어서', '계속', '안되', '안돼', '말고', '제외', '만', '처럼', '똑같이']
+                    )
+                    
+                    if is_followup_instruction and main_topic:
+                        # 후속 지시는 주제 기반 검색 (현재 질문 미포함)
+                        search_query = main_topic
+                    elif len(question) < 50 and main_topic:
                         search_query = f"{main_topic} {question}"
                     else:
                         # 이전 질문들도 검색 쿼리에 추가
@@ -597,12 +612,61 @@ async def chat(
                             topic_context = m.content[:150].split('\n')[0]
                             break
             
-            # 1. 관련 문서 검색 (이전 대화 맥락 반영)
+            # 1. 관련 문서 검색 (이전 대화 맥락 반영) - 더 많이 검색 후 필터링
+            search_k = k_value * 3 if conversation_keywords else k_value  # 필터링할 경우 3배 검색
             docs = app_state.vector_manager.similarity_search(
                 search_query, 
                 app_state.current_collection, 
-                k=k_value
+                k=search_k
             ) if k_value > 0 else []
+            
+            # 1-1. 대화 맥락 기반 문서 필터링
+            if conversation_keywords and docs:
+                # 제외 키워드 확인 (사용자가 "~는 안돼", "~말고" 등으로 언급)
+                exclude_types = []
+                include_types = []
+                
+                # 최근 질문에서 제외/포함 조건 파악
+                if 'md' in conversation_keywords:
+                    # "md는 안돼" 같은 표현 확인
+                    for msg in recent_msgs:
+                        if msg.role == "user":
+                            content_lower = msg.content.lower()
+                            if ('md' in content_lower or 'markdown' in content_lower) and \
+                               any(neg in msg.content for neg in ['안돼', '안되', '말고', '제외', '빼고']):
+                                exclude_types.append('.md')
+                            elif 'hwp' in content_lower and \
+                                 any(pos in msg.content for pos in ['처럼', '똑같이', '양식', '형식', '맞춰']):
+                                include_types.append('.hwp')
+                
+                # 문서 필터링
+                filtered_docs = []
+                for doc in docs:
+                    filename = doc.metadata.get('filename', '').lower()
+                    source = doc.metadata.get('source', '').lower()
+                    
+                    # 제외 조건
+                    should_exclude = False
+                    for ext in exclude_types:
+                        if filename.endswith(ext) or source.endswith(ext):
+                            should_exclude = True
+                            break
+                    
+                    if should_exclude:
+                        continue
+                    
+                    # 포함 조건이 있으면 해당 타입 우선
+                    if include_types:
+                        is_preferred = any(filename.endswith(ext) or source.endswith(ext) for ext in include_types)
+                        if is_preferred:
+                            filtered_docs.insert(0, doc)  # 우선순위 높임
+                        else:
+                            filtered_docs.append(doc)
+                    else:
+                        filtered_docs.append(doc)
+                
+                # 필터링 결과 적용 (k개로 제한)
+                docs = filtered_docs[:k_value] if filtered_docs else docs[:k_value]
             
             # 문서 정보 전송
             sources = []
@@ -641,42 +705,54 @@ async def chat(
             # 핵심 주제 힌트 (첫 질문 기반)
             topic_hint = ""
             if main_topic:
-                topic_hint = f"\n**[핵심 주제 - 절대 변경 금지]**: {main_topic[:100]}\n"
+                topic_hint = f"\n**[핵심 주제]**: {main_topic[:150]}\n"
             elif topic_context:
                 topic_hint = f"\n**[현재 작업 주제]**: {topic_context}\n"
             
-            # 프론트 시스템 프롬프트가 기본값과 같으면 무시 (중복 방지)
-            default_prompt_check = "당신은 창의적인 문서 작성 전문 AI입니다"
-            is_custom = system_prompt and system_prompt.strip() and default_prompt_check not in system_prompt
-            user_instruction = f"\n\n## 사용자 추가 지시\n{system_prompt}" if is_custom else ""
+            # 현재 질문이 후속 지시인지 판단
+            is_followup = len(question) < 80 and history_text
+            current_instruction = ""
+            if is_followup:
+                current_instruction = f"\n**[현재 지시]**: {question} (이전 대화의 연장입니다)"
             
-            base_system = f"""당신은 창의적인 문서 작성 전문 AI입니다.
-{topic_hint}
-## 핵심 규칙
-1. **주제 유지 필수** - 위의 [핵심 주제]를 절대 변경하지 마세요. 사용자가 "양식대로", "이어서" 등 짧은 지시를 해도 원래 주제를 유지
-2. **참고 문서의 주제가 달라도 무시** - 참고 문서가 다른 주제라도 현재 작업 주제와 다르면 완전히 무시
-3. 참고 문서의 양식/구조만 참고하고, 내용은 현재 주제에 맞게 새로 작성
-4. 이전 대화에서 작성 중이던 내용을 이어서 작성
-5. **반드시 한국어로 답변하세요** (seed: {random.randint(1000,9999)}){user_instruction}"""
+            # 사용자가 추가 지시사항을 입력한 경우에만 추가
+            user_instruction = ""
+            if system_prompt and system_prompt.strip():
+                # 기본 안내 문구는 무시
+                cleaned = system_prompt.strip()
+                if not cleaned.startswith("(선택사항)") and len(cleaned) > 10:
+                    user_instruction = f"\n\n## 사용자 추가 지시\n{cleaned}"
+            
+            base_system = f"""당신은 문서 작성을 도와주는 AI 어시스턴트입니다. 반드시 한국어로만 답변하세요.
+{topic_hint}{current_instruction}
+## 참고 문서 활용 방법
+1. **주제가 일치하는 문서** → 내용과 양식을 모두 참고하여 답변
+2. **주제가 다른 문서** → 양식/구조만 참고하고, 내용은 [핵심 주제]에 맞게 새로 작성
+3. 이전 대화에서 작성 중이던 내용이 있으면 이어서 작성
+
+## 주의사항
+- 짧은 후속 질문(예: "양식대로 해줘", "이어서")은 이전 주제의 연장입니다
+- **절대 영어나 다른 언어로 답변하지 마세요. 한국어로만 답변하세요.**
+{user_instruction}"""
 
             prompt = f"""{base_system}
 
-## 이전 대화 (맥락 유지 필수)
-{history_text}
+## 이전 대화
+{history_text if history_text else "(새 대화입니다)"}
 
-[참고 문서]
-{context}
+## 참고 문서
+{context if context else "(검색된 문서 없음)"}
 
-[질문]
+## 질문
 {question}
 
-[답변]"""
+## 답변 (한국어로):"""
             
             # 5. 첨부 문서가 있으면 프롬프트에 추가
             doc_attachments = [a for a in attachment_list if a.get('type') == 'document']
             if doc_attachments:
                 attached_docs = "\n\n".join([f"[첨부파일: {a['name']}]\n{a['data'][:3000]}" for a in doc_attachments])
-                prompt = prompt.replace("[참고 문서]", f"[첨부 문서]\n{attached_docs}\n\n[참고 문서]")
+                prompt = prompt.replace("## 참고 문서", f"## 첨부 문서 (사용자가 직접 첨부)\n{attached_docs}\n\n## 참고 문서")
             
             # 6. 이미지 첨부 (비전 모델용)
             image_attachments = [a['data'] for a in attachment_list if a.get('type') == 'image']
@@ -833,6 +909,67 @@ async def get_collections():
             continue
     
     return {"collections": result, "current": app_state.current_collection}
+
+
+@app.delete("/api/collections/{collection_name}")
+async def delete_collection(collection_name: str):
+    """컬렉션 삭제 (VectorManager 재초기화로 lock 해제)"""
+    import gc
+    import shutil
+    import time
+    from config.settings import CHROMA_DB_PATH
+    
+    if not app_state.vector_manager:
+        return JSONResponse({"error": "Vector Manager가 초기화되지 않았습니다."}, status_code=500)
+    
+    # 현재 사용 중인 컬렉션이면 선택 해제
+    if app_state.current_collection == collection_name:
+        app_state.current_collection = None
+        app_state.rag_pipeline = None
+    
+    collection_path = CHROMA_DB_PATH / collection_name
+    
+    try:
+        # 1. VectorManager의 모든 컬렉션 캐시 정리
+        app_state.vector_manager._collections.clear()
+        
+        # 2. VectorManager 완전 재초기화 (모든 연결 해제)
+        old_manager = app_state.vector_manager
+        app_state.vector_manager = None
+        del old_manager
+        
+        # 3. 강제 가비지 컬렉션
+        gc.collect()
+        gc.collect()
+        time.sleep(0.5)
+        
+        # 4. 폴더 삭제 시도
+        if collection_path.exists():
+            shutil.rmtree(collection_path)
+        
+        # 5. VectorManager 재생성
+        from src.vector.vector_manager import VectorManager
+        app_state.vector_manager = VectorManager()
+        
+        return {"success": True, "message": f"컬렉션 '{collection_name}' 삭제 완료"}
+        
+    except PermissionError as e:
+        # 실패 시 VectorManager 복구
+        if app_state.vector_manager is None:
+            from src.vector.vector_manager import VectorManager
+            app_state.vector_manager = VectorManager()
+        
+        # 쓰레기통에 추가
+        _add_to_trash(collection_name)
+        return {"success": False, "message": f"삭제 실패: 파일이 사용 중입니다. 앱 재시작 후 삭제됩니다.", "pending": True}
+        
+    except Exception as e:
+        # 실패 시 VectorManager 복구
+        if app_state.vector_manager is None:
+            from src.vector.vector_manager import VectorManager
+            app_state.vector_manager = VectorManager()
+        
+        return JSONResponse({"error": f"컬렉션 삭제 실패: {str(e)}"}, status_code=500)
 
 
 @app.post("/api/clear-chat")
