@@ -616,17 +616,22 @@ async def chat(
                     thinking_steps.append(f"🎯 핵심 주제: {main_topic[:50]}...")
                     print(f"[DEBUG] Main topic: {main_topic[:100]}")
                 
-                # 현재 질문이 짧으면 (지시/요청) 이전 주제를 검색에 사용
-                if len(question) < 50 and main_topic:
+                # 현재 질문이 짧고, 이전 대화가 2개 이상 있을 때만 확장
+                # (첫 질문이면 확장하지 않음 - 중복 방지)
+                is_first_question = len(user_msgs) == 1 and question == user_msgs[0].content
+                
+                if len(question) < 50 and main_topic and not is_first_question:
                     search_query = f"{main_topic} {question}"
                     yield f"data: {json.dumps({'type': 'thinking', 'step': '검색 쿼리 확장', 'detail': '짧은 질문 - 이전 주제 컨텍스트 추가'})}\n\n"
                     print(f"[DEBUG] Expanded search query: {search_query[:150]}")
-                else:
-                    # 이전 질문들도 검색 쿼리에 추가
-                    prev_questions = [m.content[:150] for m in user_msgs][-5:]  # 5개, 150자로 증가
+                elif len(user_msgs) > 1:
+                    # 이전 질문들도 검색 쿼리에 추가 (현재 질문 제외)
+                    prev_questions = [m.content[:150] for m in user_msgs[:-1]][-5:]  # 마지막(현재) 제외
                     if prev_questions:
                         search_query = f"{' '.join(prev_questions)} {question}"
                         print(f"[DEBUG] Combined search query: {search_query[:150]}")
+                else:
+                    print(f"[DEBUG] First question - no expansion needed")
                 
                 # 이전 AI 응답의 핵심 내용 요약 (대화 맥락 강화)
                 ai_msgs = [m for m in recent_msgs if m.role == "assistant"]
@@ -655,7 +660,7 @@ async def chat(
             docs = app_state.vector_manager.similarity_search(
                 search_query, 
                 app_state.current_collection, 
-                k=search_k
+                k=k_value
             ) if k_value > 0 else []
             
             # 검색 결과 thinking 정보 (중복 파일명 제거)
