@@ -25,6 +25,161 @@ sys.path.append(str(Path(__file__).parent.parent.parent))
 from config.settings import SUPPORTED_EXTENSIONS, CHUNK_SIZE, CHUNK_OVERLAP
 
 
+class SmartTextLoader:
+    """여러 인코딩을 시도하는 텍스트 로더"""
+    
+    ENCODINGS = ['utf-8', 'cp949', 'euc-kr', 'utf-16', 'latin-1']
+    
+    def __init__(self, file_path: str):
+        self.file_path = file_path
+    
+    def load(self) -> List[Document]:
+        """여러 인코딩으로 파일 로드 시도"""
+        content = None
+        used_encoding = None
+        
+        for encoding in self.ENCODINGS:
+            try:
+                with open(self.file_path, 'r', encoding=encoding) as f:
+                    content = f.read()
+                used_encoding = encoding
+                break
+            except (UnicodeDecodeError, UnicodeError):
+                continue
+        
+        if content is None:
+            # 바이너리로 읽어서 에러 무시
+            try:
+                with open(self.file_path, 'r', encoding='utf-8', errors='ignore') as f:
+                    content = f.read()
+                used_encoding = 'utf-8 (with errors ignored)'
+            except Exception as e:
+                raise ValueError(f"파일을 읽을 수 없습니다: {e}")
+        
+        return [Document(
+            page_content=content,
+            metadata={"source": self.file_path, "encoding": used_encoding}
+        )]
+
+
+class SafeExcelLoader:
+    """Excel 파일 안전하게 로드 (암호화된 파일도 지원)"""
+    
+    def __init__(self, file_path: str):
+        self.file_path = file_path
+    
+    def load(self) -> List[Document]:
+        """Excel 파일 읽기 (.xlsx는 openpyxl, .xls는 xlrd 또는 pandas)"""
+        ext = Path(self.file_path).suffix.lower()
+        
+        if ext == '.xls':
+            return self._load_xls()
+        else:
+            return self._load_xlsx()
+    
+    def _decrypt_if_needed(self, file_path: str):
+        """암호화된 Excel 파일 복호화 (빈 비밀번호로 시도)"""
+        try:
+            import msoffcrypto
+            import io
+            
+            with open(file_path, 'rb') as f:
+                file_data = f.read()
+            
+            # 암호화 여부 확인
+            file_obj = io.BytesIO(file_data)
+            try:
+                office_file = msoffcrypto.OfficeFile(file_obj)
+                if office_file.is_encrypted():
+                    # 빈 비밀번호로 복호화 시도 (Excel 기본 암호화)
+                    decrypted = io.BytesIO()
+                    try:
+                        office_file.load_key(password='')
+                        office_file.decrypt(decrypted)
+                        return decrypted
+                    except Exception:
+                        # 비밀번호가 있는 파일
+                        raise ValueError("비밀번호로 보호된 Excel 파일입니다. 암호를 해제 후 다시 시도하세요.")
+            except Exception as e:
+                if 'password' in str(e).lower() or '비밀번호' in str(e):
+                    raise
+                # 암호화되지 않은 파일 - 원본 반환
+                pass
+            
+            return file_path
+        except ImportError:
+            # msoffcrypto 없으면 원본 파일 그대로 반환
+            return file_path
+    
+    def _load_xlsx(self) -> List[Document]:
+        """openpyxl로 .xlsx 읽기"""
+        try:
+            import openpyxl
+        except ImportError:
+            raise ImportError("openpyxl이 설치되지 않았습니다. pip install openpyxl")
+        
+        # 암호화 파일 처리 시도
+        file_to_load = self._decrypt_if_needed(self.file_path)
+        
+        try:
+            wb = openpyxl.load_workbook(file_to_load, read_only=True, data_only=True)
+        except Exception as e:
+            error_msg = str(e).lower()
+            if 'encrypted' in error_msg or 'password' in error_msg:
+                raise ValueError(f"암호화된 Excel 파일입니다. 암호를 해제 후 다시 시도하세요.")
+            raise ValueError(f"Excel 파일을 열 수 없습니다: {e}")
+        
+        documents = []
+        for sheet_name in wb.sheetnames:
+            sheet = wb[sheet_name]
+            rows = []
+            for row in sheet.iter_rows(values_only=True):
+                row_text = '\t'.join(str(cell) if cell is not None else '' for cell in row)
+                if row_text.strip():
+                    rows.append(row_text)
+            
+            if rows:
+                content = f"[시트: {sheet_name}]\n" + '\n'.join(rows)
+                documents.append(Document(
+                    page_content=content,
+                    metadata={"source": self.file_path, "sheet": sheet_name}
+                ))
+        
+        wb.close()
+        return documents
+    
+    def _load_xls(self) -> List[Document]:
+        """pandas로 .xls 읽기 (xlrd 필요)"""
+        try:
+            import pandas as pd
+        except ImportError:
+            raise ImportError("pandas가 설치되지 않았습니다. pip install pandas")
+        
+        try:
+            # xlrd 엔진으로 .xls 읽기
+            xls = pd.ExcelFile(self.file_path, engine='xlrd')
+        except ImportError:
+            # xlrd 없으면 openpyxl 시도 (보통 실패하지만)
+            try:
+                xls = pd.ExcelFile(self.file_path)
+            except Exception as e:
+                raise ImportError(f"xlrd가 필요합니다. pip install xlrd: {e}")
+        except Exception as e:
+            raise ValueError(f"Excel 파일을 열 수 없습니다: {e}")
+        
+        documents = []
+        for sheet_name in xls.sheet_names:
+            df = pd.read_excel(xls, sheet_name=sheet_name)
+            # DataFrame을 텍스트로 변환
+            content = f"[시트: {sheet_name}]\n" + df.to_string(index=False)
+            documents.append(Document(
+                page_content=content,
+                metadata={"source": self.file_path, "sheet": sheet_name}
+            ))
+        
+        return documents
+
+
 class DocumentProcessor:
     """문서 처리 총괄 클래스"""
     
@@ -35,10 +190,11 @@ class DocumentProcessor:
         '.pdf': PyPDFLoader,
         '.docx': Docx2txtLoader,
         '.doc': UnstructuredWordDocumentLoader,
-        '.txt': TextLoader,
-        '.md': TextLoader,
+        '.txt': SmartTextLoader,  # 여러 인코딩 시도
+        '.md': SmartTextLoader,   # 여러 인코딩 시도
         '.csv': CSVLoader,
-        '.xlsx': UnstructuredExcelLoader,
+        '.xlsx': SafeExcelLoader,  # msoffcrypto 없이 동작
+        '.xls': SafeExcelLoader,   # 구버전 Excel도 지원
     }
     
     def __init__(self, chunk_size: int = CHUNK_SIZE, chunk_overlap: int = CHUNK_OVERLAP):

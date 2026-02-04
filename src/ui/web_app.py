@@ -344,27 +344,13 @@ async def index(request: Request):
             # 잘못된 컬렉션은 건너뛰기
             continue
     
-    default_system_prompt = """당신은 창의적인 문서 작성 전문 AI입니다.
-
-**[핵심 주제]**: (시스템이 첫 번째 질문에서 자동 추출)
-
-## 핵심 규칙
-1. **주제 유지 필수** - [핵심 주제]를 절대 변경하지 마세요. 사용자가 "양식대로", "이어서" 등 짧은 지시를 해도 원래 주제를 유지
-2. **참고 문서의 주제가 달라도 무시** - 참고 문서가 다른 주제라도 현재 작업 주제와 다르면 완전히 무시
-3. 참고 문서의 양식/구조만 참고하고, 내용은 현재 주제에 맞게 새로 작성
-4. 이전 대화에서 작성 중이던 내용을 이어서 작성
-5. **반드시 한국어로 답변하세요**
-
-(이전 대화 맥락, 참고 문서, 랜덤 시드는 시스템이 자동으로 추가합니다)"""
-    
     response = templates.TemplateResponse("index.html", {
         "request": request,
         "models": [{"name": m.name, "size": m.size, "is_vision": m.is_vision} for m in models],
         "collections": collection_stats,
         "current_model": app_state.model_manager._current_model_name if app_state.model_manager else None,
         "current_collection": app_state.current_collection,
-        "user": {"id": user_id, "username": username} if user_id else None,
-        "default_system_prompt": default_system_prompt
+        "user": {"id": user_id, "username": username} if user_id else None
     })
     response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
     return response
@@ -669,7 +655,7 @@ async def chat(
             docs = app_state.vector_manager.similarity_search(
                 search_query, 
                 app_state.current_collection, 
-                k=k_value
+                k=search_k
             ) if k_value > 0 else []
             
             # 검색 결과 thinking 정보 (중복 파일명 제거)
@@ -742,10 +728,19 @@ async def chat(
             elif topic_context:
                 topic_hint = f"\n**[현재 작업 주제]**: {topic_context}\n"
             
-            # 프론트 시스템 프롬프트가 기본값과 같으면 무시 (중복 방지)
-            default_prompt_check = "당신은 창의적인 문서 작성 전문 AI입니다"
-            is_custom = system_prompt and system_prompt.strip() and default_prompt_check not in system_prompt
-            user_instruction = f"\n\n## 사용자 추가 지시\n{system_prompt}" if is_custom else ""
+            # 현재 질문이 후속 지시인지 판단
+            is_followup = len(question) < 80 and history_text
+            current_instruction = ""
+            if is_followup:
+                current_instruction = f"\n**[현재 지시]**: {question} (이전 대화의 연장입니다)"
+            
+            # 사용자가 추가 지시사항을 입력한 경우에만 추가
+            user_instruction = ""
+            if system_prompt and system_prompt.strip():
+                # 기본 안내 문구는 무시
+                cleaned = system_prompt.strip()
+                if not cleaned.startswith("(선택사항)") and len(cleaned) > 10:
+                    user_instruction = f"\n\n## 사용자 추가 지시\n{cleaned}"
             
             base_system = f"""당신은 창의적인 문서 작성 전문 AI입니다. 모든 응답은 반드시 한국어로 작성해야 합니다.
 {topic_hint}
@@ -773,7 +768,7 @@ async def chat(
             doc_attachments = [a for a in attachment_list if a.get('type') == 'document']
             if doc_attachments:
                 attached_docs = "\n\n".join([f"[첨부파일: {a['name']}]\n{a['data'][:3000]}" for a in doc_attachments])
-                prompt = prompt.replace("[참고 문서]", f"[첨부 문서]\n{attached_docs}\n\n[참고 문서]")
+                prompt = prompt.replace("## 참고 문서", f"## 첨부 문서 (사용자가 직접 첨부)\n{attached_docs}\n\n## 참고 문서")
             
             # 6. 이미지 첨부 (비전 모델용)
             image_attachments = [a['data'] for a in attachment_list if a.get('type') == 'image']
@@ -934,6 +929,67 @@ async def get_collections():
             continue
     
     return {"collections": result, "current": app_state.current_collection}
+
+
+@app.delete("/api/collections/{collection_name}")
+async def delete_collection(collection_name: str):
+    """컬렉션 삭제 (VectorManager 재초기화로 lock 해제)"""
+    import gc
+    import shutil
+    import time
+    from config.settings import CHROMA_DB_PATH
+    
+    if not app_state.vector_manager:
+        return JSONResponse({"error": "Vector Manager가 초기화되지 않았습니다."}, status_code=500)
+    
+    # 현재 사용 중인 컬렉션이면 선택 해제
+    if app_state.current_collection == collection_name:
+        app_state.current_collection = None
+        app_state.rag_pipeline = None
+    
+    collection_path = CHROMA_DB_PATH / collection_name
+    
+    try:
+        # 1. VectorManager의 모든 컬렉션 캐시 정리
+        app_state.vector_manager._collections.clear()
+        
+        # 2. VectorManager 완전 재초기화 (모든 연결 해제)
+        old_manager = app_state.vector_manager
+        app_state.vector_manager = None
+        del old_manager
+        
+        # 3. 강제 가비지 컬렉션
+        gc.collect()
+        gc.collect()
+        time.sleep(0.5)
+        
+        # 4. 폴더 삭제 시도
+        if collection_path.exists():
+            shutil.rmtree(collection_path)
+        
+        # 5. VectorManager 재생성
+        from src.vector.vector_manager import VectorManager
+        app_state.vector_manager = VectorManager()
+        
+        return {"success": True, "message": f"컬렉션 '{collection_name}' 삭제 완료"}
+        
+    except PermissionError as e:
+        # 실패 시 VectorManager 복구
+        if app_state.vector_manager is None:
+            from src.vector.vector_manager import VectorManager
+            app_state.vector_manager = VectorManager()
+        
+        # 쓰레기통에 추가
+        _add_to_trash(collection_name)
+        return {"success": False, "message": f"삭제 실패: 파일이 사용 중입니다. 앱 재시작 후 삭제됩니다.", "pending": True}
+        
+    except Exception as e:
+        # 실패 시 VectorManager 복구
+        if app_state.vector_manager is None:
+            from src.vector.vector_manager import VectorManager
+            app_state.vector_manager = VectorManager()
+        
+        return JSONResponse({"error": f"컬렉션 삭제 실패: {str(e)}"}, status_code=500)
 
 
 @app.post("/api/clear-chat")

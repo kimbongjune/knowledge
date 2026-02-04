@@ -265,12 +265,122 @@ class VectorManager:
                      return True
                 raise OSError(f"이름 변경 실패: {str(e)}")
     
-    def delete_collection(self, collection_name: str):
-        """컬렉션 삭제"""
+    def delete_collection(self, collection_name: str) -> bool:
+        """
+        컬렉션 삭제 (live 환경에서도 동작)
+        
+        Returns:
+            성공 여부
+        """
         import shutil
+        import gc
+        import time
         
         collection_path = self.persist_path / collection_name
-        if collection_path.exists():
-            shutil.rmtree(collection_path)
         
-        self._collections.pop(collection_name, None)
+        # 1. 캐시된 Chroma 객체에서 내부 클라이언트 정리
+        if collection_name in self._collections:
+            try:
+                chroma_obj = self._collections[collection_name]
+                # Chroma 내부의 _client에 접근하여 컬렉션 삭제
+                if hasattr(chroma_obj, '_client') and chroma_obj._client:
+                    try:
+                        chroma_obj._client.delete_collection(collection_name)
+                    except:
+                        pass
+                # _collection 객체 정리
+                if hasattr(chroma_obj, '_collection'):
+                    chroma_obj._collection = None
+            except Exception as e:
+                print(f"Chroma 객체 정리 중 오류: {e}")
+            
+            # 캐시에서 제거
+            del self._collections[collection_name]
+        
+        # 2. 강제 가비지 컬렉션 (SQLite 연결 해제)
+        gc.collect()
+        time.sleep(0.3)
+        
+        # 3. SQLite 파일 직접 닫기 시도 (Windows 전용)
+        sqlite_file = collection_path / "chroma.sqlite3"
+        if sqlite_file.exists():
+            try:
+                import sqlite3
+                # 연결 후 즉시 닫아서 다른 연결 해제 유도
+                conn = sqlite3.connect(str(sqlite_file), timeout=1)
+                conn.close()
+            except:
+                pass
+        
+        gc.collect()
+        time.sleep(0.3)
+        
+        # 4. 폴더 삭제 (재시도 로직)
+        if collection_path.exists():
+            max_retries = 5
+            for attempt in range(max_retries):
+                try:
+                    shutil.rmtree(collection_path)
+                    print(f"✅ 컬렉션 '{collection_name}' 삭제 완료")
+                    return True
+                except PermissionError as e:
+                    if attempt < max_retries - 1:
+                        print(f"파일 lock 감지, 재시도 중... ({attempt + 1}/{max_retries})")
+                        gc.collect()
+                        time.sleep(0.5 * (attempt + 1))  # 점점 더 오래 대기
+                    else:
+                        # 최후의 수단: 개별 파일 삭제 시도
+                        try:
+                            self._force_delete_folder(collection_path)
+                            print(f"✅ 컬렉션 '{collection_name}' 강제 삭제 완료")
+                            return True
+                        except:
+                            print(f"⚠️ 즉시 삭제 실패, 재시작 시 삭제 예정: {e}")
+                            self._add_to_trash(collection_name)
+                            return False
+                except Exception as e:
+                    print(f"삭제 오류: {e}")
+                    return False
+        
+        return True
+    
+    def _force_delete_folder(self, folder_path: Path):
+        """개별 파일을 하나씩 삭제 시도"""
+        import os
+        import stat
+        
+        for root, dirs, files in os.walk(str(folder_path), topdown=False):
+            for name in files:
+                file_path = os.path.join(root, name)
+                try:
+                    os.chmod(file_path, stat.S_IWRITE)
+                    os.remove(file_path)
+                except:
+                    pass
+            for name in dirs:
+                dir_path = os.path.join(root, name)
+                try:
+                    os.rmdir(dir_path)
+                except:
+                    pass
+        
+        try:
+            os.rmdir(str(folder_path))
+        except:
+            raise PermissionError("폴더 삭제 실패")
+    
+    def _add_to_trash(self, name: str):
+        """삭제 실패한 폴더를 쓰레기통에 추가 (재시작 시 삭제)"""
+        try:
+            import json
+            trash_file = self.persist_path.parent / "trash.json"
+            trash = set()
+            if trash_file.exists():
+                try:
+                    trash = set(json.loads(trash_file.read_text(encoding='utf-8')))
+                except:
+                    pass
+            trash.add(name)
+            trash_file.write_text(json.dumps(list(trash)), encoding='utf-8')
+        except Exception as e:
+            print(f"쓰레기통 추가 실패: {e}")

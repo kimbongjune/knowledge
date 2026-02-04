@@ -30,7 +30,7 @@ SUPPORTED_EXTENSIONS = {
 }
 
 # 임베딩 모델 설정
-EMBEDDING_MODEL = "jhgan/ko-sroberta-multitask"  # 한국어 특화
+EMBEDDING_MODEL = "dragonkue/BGE-m3-ko"  # 한국어 특화
 
 # LLM 설정
 DEFAULT_MODEL_PARAMS = {

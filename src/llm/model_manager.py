@@ -91,21 +91,59 @@ class ModelManager:
         """
         # 인기/추천 모델 목록 (수동 관리)
         popular_models = [
+            # Qwen 시리즈
+            {"name": "qwen2.5:3b", "description": "Qwen 2.5 3B - 경량 한국어", "size": "1.9 GB"},
             {"name": "qwen2.5:7b", "description": "Qwen 2.5 7B - 빠른 한국어 지원", "size": "4.7 GB"},
             {"name": "qwen2.5:14b", "description": "Qwen 2.5 14B - 균형잡힌 성능", "size": "9.0 GB"},
             {"name": "qwen2.5:32b", "description": "Qwen 2.5 32B - 고성능", "size": "19 GB"},
             {"name": "qwen2.5:72b", "description": "Qwen 2.5 72B - 최고 성능", "size": "41 GB"},
+            {"name": "qwen2.5-coder:7b", "description": "Qwen 2.5 Coder 7B - 코딩 특화", "size": "4.7 GB"},
+            {"name": "qwen2.5-coder:14b", "description": "Qwen 2.5 Coder 14B - 코딩 고성능", "size": "9.0 GB"},
+            # Llama 시리즈
+            {"name": "llama3.2:1b", "description": "Llama 3.2 1B - 초경량", "size": "1.3 GB"},
             {"name": "llama3.2:3b", "description": "Llama 3.2 3B - 경량 모델", "size": "2.0 GB"},
-            {"name": "llama3.2:11b", "description": "Llama 3.2 11B Vision - 이미지 분석", "size": "7.9 GB", "vision": True},
-            {"name": "llama3.2:90b", "description": "Llama 3.2 90B Vision - 고성능 비전", "size": "55 GB", "vision": True},
+            {"name": "llama3.1:8b", "description": "Llama 3.1 8B - 기본 성능", "size": "4.7 GB"},
+            {"name": "llama3.1:70b", "description": "Llama 3.1 70B - 고성능", "size": "40 GB"},
+            {"name": "llama3.2-vision:11b", "description": "Llama 3.2 11B Vision - 이미지 분석", "size": "7.9 GB", "vision": True},
+            {"name": "llama3.2-vision:90b", "description": "Llama 3.2 90B Vision - 고성능 비전", "size": "55 GB", "vision": True},
+            # Gemma 시리즈
+            {"name": "gemma2:2b", "description": "Gemma 2 2B - Google 초경량", "size": "1.6 GB"},
+            {"name": "gemma2:9b", "description": "Gemma 2 9B - Google 경량 모델", "size": "5.4 GB"},
+            {"name": "gemma2:27b", "description": "Gemma 2 27B - Google 고성능", "size": "16 GB"},
+            # Mistral 시리즈
+            {"name": "mistral:7b", "description": "Mistral 7B - 빠르고 효율적", "size": "4.1 GB"},
+            {"name": "mistral-nemo:12b", "description": "Mistral Nemo 12B - 중간 성능", "size": "7.1 GB"},
+            {"name": "mixtral:8x7b", "description": "Mixtral 8x7B - MoE 고성능", "size": "26 GB"},
+            # DeepSeek 시리즈
+            {"name": "deepseek-r1:7b", "description": "DeepSeek R1 7B - 최신 추론 모델", "size": "4.7 GB"},
+            {"name": "deepseek-r1:14b", "description": "DeepSeek R1 14B - 추론 고성능", "size": "9.0 GB"},
+            {"name": "deepseek-r1:32b", "description": "DeepSeek R1 32B - 추론 최고성능", "size": "19 GB"},
+            {"name": "deepseek-coder:6.7b", "description": "DeepSeek Coder - 코딩 전문", "size": "3.8 GB"},
+            {"name": "deepseek-coder-v2:16b", "description": "DeepSeek Coder V2 - 코딩 고성능", "size": "9.0 GB"},
+            # LLaVA 시리즈 (비전)
             {"name": "llava:7b", "description": "LLaVA 7B - 이미지 분석 기본", "size": "4.5 GB", "vision": True},
             {"name": "llava:13b", "description": "LLaVA 13B - 이미지 분석 성능", "size": "8.0 GB", "vision": True},
             {"name": "llava:34b", "description": "LLaVA 34B - 고성능 이미지 분석", "size": "20 GB", "vision": True},
-            {"name": "gemma2:9b", "description": "Gemma 2 9B - Google 경량 모델", "size": "5.4 GB"},
-            {"name": "gemma2:27b", "description": "Gemma 2 27B - Google 고성능", "size": "16 GB"},
-            {"name": "mistral:7b", "description": "Mistral 7B - 빠르고 효율적", "size": "4.1 GB"},
+            {"name": "bakllava:7b", "description": "BakLLaVA 7B - 개선된 비전", "size": "4.5 GB", "vision": True},
+            # 코딩 전문
             {"name": "codellama:7b", "description": "Code Llama 7B - 코드 특화", "size": "3.8 GB"},
-            {"name": "deepseek-coder:6.7b", "description": "DeepSeek Coder - 코딩 전문", "size": "3.8 GB"},
+            {"name": "codellama:13b", "description": "Code Llama 13B - 코드 고성능", "size": "7.4 GB"},
+            {"name": "codellama:34b", "description": "Code Llama 34B - 코드 최고성능", "size": "19 GB"},
+            {"name": "codegemma:7b", "description": "CodeGemma 7B - Google 코드", "size": "5.0 GB"},
+            {"name": "starcoder2:7b", "description": "StarCoder2 7B - 코드 생성", "size": "4.0 GB"},
+            # 기타
+            {"name": "phi3:mini", "description": "Phi-3 Mini - MS 초경량", "size": "2.2 GB"},
+            {"name": "phi3:medium", "description": "Phi-3 Medium - MS 중간", "size": "7.9 GB"},
+            {"name": "yi:6b", "description": "Yi 6B - 중국어/영어", "size": "3.5 GB"},
+            {"name": "yi:34b", "description": "Yi 34B - 고성능", "size": "19 GB"},
+            {"name": "solar:10.7b", "description": "Solar 10.7B - 한국어 특화", "size": "6.1 GB"},
+            {"name": "openchat:7b", "description": "OpenChat 7B - 대화 특화", "size": "4.1 GB"},
+            {"name": "neural-chat:7b", "description": "Neural Chat 7B - Intel 최적화", "size": "4.1 GB"},
+            {"name": "dolphin-mixtral:8x7b", "description": "Dolphin Mixtral - 무검열 MoE", "size": "26 GB"},
+            {"name": "nous-hermes2:10.7b", "description": "Nous Hermes 2 - 다목적", "size": "6.1 GB"},
+            {"name": "orca-mini:7b", "description": "Orca Mini 7B - 경량 추론", "size": "4.1 GB"},
+            {"name": "vicuna:7b", "description": "Vicuna 7B - 대화 특화", "size": "4.1 GB"},
+            {"name": "wizardlm2:7b", "description": "WizardLM 2 7B - 지시 따르기", "size": "4.1 GB"},
         ]
         
         # 설치된 모델 목록
