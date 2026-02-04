@@ -147,6 +147,14 @@ def _update_managed_path(old_path, new_path):
 # ==============================
 
 # 전역 상태
+class TempMessage:
+    """비로그인 사용자용 임시 메시지"""
+    def __init__(self, role: str, content: str):
+        self.role = role
+        self.content = content
+        self.sources = None
+
+
 class AppState:
     def __init__(self):
         self.doc_processor: Optional[DocumentProcessor] = None
@@ -159,6 +167,8 @@ class AppState:
         self.current_user_id: Optional[str] = None  # 로그인 사용자 ID
         self.pending_session: bool = False  # 새 대화 클릭 시 True, 첫 메시지 시 세션 생성
         self.indexing_progress: dict = {"current": 0, "total": 0, "status": "", "done": True}
+        # 비로그인 사용자용 임시 대화 기록 (메모리)
+        self.temp_messages: list = []
 
 app_state = AppState()
 
@@ -567,42 +577,116 @@ async def chat(
     except:
         attachment_list = []
     
+    # === 사용자 메시지 먼저 저장 (generate() 밖에서 - 중단되어도 저장됨) ===
+    if app_state.current_user_id and app_state.current_session_id:
+        # 로그인 사용자: DB에 저장
+        app_state.chat_storage.add_message(
+            app_state.current_session_id, 
+            "user", 
+            question
+        )
+        print(f"[DEBUG] User message saved to DB")
+    else:
+        # 비로그인 사용자: 메모리에 저장
+        app_state.temp_messages.append(TempMessage("user", question))
+        print(f"[DEBUG] User message saved to memory. Total: {len(app_state.temp_messages)}")
+    
     async def generate():
         try:
+            thinking_steps = []  # 추론 과정 기록
+            
+            # === 🧠 추론 과정 시작 ===
+            thinking_steps.append("🔍 질문 분석 중...")
+            yield f"data: {json.dumps({'type': 'thinking', 'step': '질문 분석', 'detail': question[:100]})}\n\n"
+            
             # 0. 이전 대화에서 맥락 추출 (검색 품질 향상)
             search_query = question
             topic_context = ""
             main_topic = ""  # 핵심 주제 (첫 질문에서 추출)
+            conversation_summary = ""  # 대화 요약
             
-            if app_state.current_session_id:
-                recent_msgs = app_state.chat_storage.get_recent_messages(app_state.current_session_id, count=10)
-                if recent_msgs:
-                    # 첫 번째 사용자 질문에서 핵심 주제 추출 (가장 중요)
-                    user_msgs = [m for m in recent_msgs if m.role == "user"]
-                    if user_msgs:
-                        main_topic = user_msgs[0].content[:200]  # 첫 질문이 주제
-                    
-                    # 현재 질문이 짧으면 (지시/요청) 이전 주제를 검색에 사용
-                    if len(question) < 50 and main_topic:
-                        search_query = f"{main_topic} {question}"
-                    else:
-                        # 이전 질문들도 검색 쿼리에 추가
-                        prev_questions = [m.content[:100] for m in user_msgs][-3:]
-                        if prev_questions:
-                            search_query = f"{' '.join(prev_questions)} {question}"
-                    
-                    # 이전 AI 응답의 첫 부분을 주제로 추출
-                    for m in reversed(recent_msgs):
-                        if m.role == "assistant" and len(m.content) > 50:
-                            topic_context = m.content[:150].split('\n')[0]
-                            break
+            # 로그인 사용자: DB에서, 비로그인: 메모리에서 대화 기록 로드
+            recent_msgs = []
+            print(f"[DEBUG] current_user_id: {app_state.current_user_id}, current_session_id: {app_state.current_session_id}")
+            print(f"[DEBUG] temp_messages count: {len(app_state.temp_messages)}")
+            
+            if app_state.current_user_id and app_state.current_session_id:
+                recent_msgs = app_state.chat_storage.get_recent_messages(app_state.current_session_id, count=30)
+                print(f"[DEBUG] Loaded from DB: {len(recent_msgs)} messages")
+            elif app_state.temp_messages:
+                recent_msgs = app_state.temp_messages[-30:]  # 최근 30개
+                print(f"[DEBUG] Loaded from memory: {len(recent_msgs)} messages")
+            else:
+                print(f"[DEBUG] No messages found - temp_messages is empty")
+            
+            if recent_msgs:
+                thinking_steps.append(f"📝 이전 대화 {len(recent_msgs)}개 로드됨")
+                yield f"data: {json.dumps({'type': 'thinking', 'step': '대화 기록 로드', 'detail': f'{len(recent_msgs)}개 메시지 발견'})}\n\n"
+                
+                # 첫 번째 사용자 질문에서 핵심 주제 추출 (가장 중요)
+                user_msgs = [m for m in recent_msgs if m.role == "user"]
+                if user_msgs:
+                    main_topic = user_msgs[0].content[:300]  # 300자로 증가
+                    thinking_steps.append(f"🎯 핵심 주제: {main_topic[:50]}...")
+                    print(f"[DEBUG] Main topic: {main_topic[:100]}")
+                
+                # 현재 질문이 짧으면 (지시/요청) 이전 주제를 검색에 사용
+                if len(question) < 50 and main_topic:
+                    search_query = f"{main_topic} {question}"
+                    yield f"data: {json.dumps({'type': 'thinking', 'step': '검색 쿼리 확장', 'detail': '짧은 질문 - 이전 주제 컨텍스트 추가'})}\n\n"
+                    print(f"[DEBUG] Expanded search query: {search_query[:150]}")
+                else:
+                    # 이전 질문들도 검색 쿼리에 추가
+                    prev_questions = [m.content[:150] for m in user_msgs][-5:]  # 5개, 150자로 증가
+                    if prev_questions:
+                        search_query = f"{' '.join(prev_questions)} {question}"
+                        print(f"[DEBUG] Combined search query: {search_query[:150]}")
+                
+                # 이전 AI 응답의 핵심 내용 요약 (대화 맥락 강화)
+                ai_msgs = [m for m in recent_msgs if m.role == "assistant"]
+                if ai_msgs:
+                    # 마지막 3개 AI 응답의 첫 문단 추출
+                    summaries = []
+                    for m in ai_msgs[-3:]:
+                        first_para = m.content.split('\n\n')[0][:200]
+                        if first_para:
+                            summaries.append(first_para)
+                    conversation_summary = " | ".join(summaries)
+                    if conversation_summary:
+                        yield f"data: {json.dumps({'type': 'thinking', 'step': '대화 맥락 분석', 'detail': f'이전 응답 {len(summaries)}개 요약 완료'})}\n\n"
+                
+                # 이전 AI 응답의 첫 부분을 주제로 추출
+                for m in reversed(recent_msgs):
+                    if m.role == "assistant" and len(m.content) > 50:
+                        topic_context = m.content[:200].split('\n')[0]  # 200자로 증가
+                        break
+            else:
+                yield f"data: {json.dumps({'type': 'thinking', 'step': '새 대화', 'detail': '이전 대화 기록 없음'})}\n\n"
             
             # 1. 관련 문서 검색 (이전 대화 맥락 반영)
+            search_preview = search_query[:80]
+            yield f"data: {json.dumps({'type': 'thinking', 'step': '문서 검색 중', 'detail': f'검색어: {search_preview}...'})}\n\n"
             docs = app_state.vector_manager.similarity_search(
                 search_query, 
                 app_state.current_collection, 
                 k=k_value
             ) if k_value > 0 else []
+            
+            # 검색 결과 thinking 정보 (중복 파일명 제거)
+            if docs:
+                # 고유 파일명만 추출 (순서 유지)
+                seen_files = set()
+                unique_doc_names = []
+                for doc in docs:
+                    fname = doc.metadata.get('filename', 'Unknown')
+                    if fname not in seen_files:
+                        seen_files.add(fname)
+                        unique_doc_names.append(fname)
+                
+                doc_names_str = ', '.join(unique_doc_names[:5])
+                yield f"data: {json.dumps({'type': 'thinking', 'step': '관련 문서 발견', 'detail': f'{len(unique_doc_names)}개 파일에서 {len(docs)}개 청크: {doc_names_str}'})}\n\n"
+            else:
+                yield f"data: {json.dumps({'type': 'thinking', 'step': '문서 검색 완료', 'detail': '관련 문서 없음 - 일반 지식 사용'})}\n\n"
             
             # 문서 정보 전송
             sources = []
@@ -622,26 +706,39 @@ async def chat(
                 for doc in docs
             )
             
-            # 3. 대화 기록 구성 (SQLite에서 로드)
+            # 3. 대화 기록 구성 (로그인: DB, 비로그인: 메모리)
             history_text = ""
-            if app_state.current_session_id:
-                recent_messages = app_state.chat_storage.get_recent_messages(app_state.current_session_id, count=20)
-                if recent_messages:
-                    history_text = ""
-                    for m in recent_messages:
-                        if m.role == "user":
-                            history_text += f"사용자: {m.content}\n"
-                        else:
-                            content = m.content[:800] + "..." if len(m.content) > 800 else m.content
-                            history_text += f"AI: {content}\n\n"
+            history_msgs = []
+            if app_state.current_user_id and app_state.current_session_id:
+                history_msgs = app_state.chat_storage.get_recent_messages(app_state.current_session_id, count=30)
+            elif app_state.temp_messages:
+                history_msgs = app_state.temp_messages[-30:]
+            
+            if history_msgs:
+                yield f"data: {json.dumps({'type': 'thinking', 'step': '대화 히스토리 구성', 'detail': f'{len(history_msgs)}개 메시지 컨텍스트에 추가'})}\n\n"
+                history_text = ""
+                for i, m in enumerate(history_msgs):
+                    if m.role == "user":
+                        # 사용자 질문은 전체 보존
+                        history_text += f"[대화 {i+1}] 사용자: {m.content}\n"
+                    else:
+                        # AI 응답은 1500자까지 (더 많은 맥락)
+                        content = m.content[:1500] + "..." if len(m.content) > 1500 else m.content
+                        history_text += f"[대화 {i+1}] AI: {content}\n\n"
+                
+                # 대화 요약이 있으면 추가
+                if conversation_summary:
+                    history_text = f"[대화 요약]: {conversation_summary}\n\n{history_text}"
+            
+            yield f"data: {json.dumps({'type': 'thinking', 'step': '프롬프트 생성 중', 'detail': '컨텍스트와 대화 기록 결합'})}\n\n"
             
             # 4. 프롬프트 구성
             import random
             
-            # 핵심 주제 힌트 (첫 질문 기반)
+            # 핵심 주제 힌트 (첫 질문 기반) - 더 명확하게
             topic_hint = ""
             if main_topic:
-                topic_hint = f"\n**[핵심 주제 - 절대 변경 금지]**: {main_topic[:100]}\n"
+                topic_hint = f"\n**[핵심 주제 - 반드시 이 주제를 유지하세요]**: {main_topic[:150]}\n"
             elif topic_context:
                 topic_hint = f"\n**[현재 작업 주제]**: {topic_context}\n"
             
@@ -650,27 +747,27 @@ async def chat(
             is_custom = system_prompt and system_prompt.strip() and default_prompt_check not in system_prompt
             user_instruction = f"\n\n## 사용자 추가 지시\n{system_prompt}" if is_custom else ""
             
-            base_system = f"""당신은 창의적인 문서 작성 전문 AI입니다.
+            base_system = f"""당신은 창의적인 문서 작성 전문 AI입니다. 모든 응답은 반드시 한국어로 작성해야 합니다.
 {topic_hint}
 ## 핵심 규칙
 1. **주제 유지 필수** - 위의 [핵심 주제]를 절대 변경하지 마세요. 사용자가 "양식대로", "이어서" 등 짧은 지시를 해도 원래 주제를 유지
-2. **참고 문서의 주제가 달라도 무시** - 참고 문서가 다른 주제라도 현재 작업 주제와 다르면 완전히 무시
+2. **참고 문서의 주제가 달라도 무시** - 참고 문서가 다른 주제라도 현재 작업 주제와 다르면 완전히 무시하고, 현재 주제에 맞는 내용만 작성
 3. 참고 문서의 양식/구조만 참고하고, 내용은 현재 주제에 맞게 새로 작성
 4. 이전 대화에서 작성 중이던 내용을 이어서 작성
-5. **반드시 한국어로 답변하세요** (seed: {random.randint(1000,9999)}){user_instruction}"""
+5. **절대로 중국어, 영어 등 다른 언어로 답변하지 마세요. 오직 한국어만 사용하세요.**{user_instruction}"""
 
             prompt = f"""{base_system}
 
-## 이전 대화 (맥락 유지 필수)
+## 이전 대화 (맥락 유지 필수 - 이전에 논의한 내용을 반드시 기억하세요)
 {history_text}
 
-[참고 문서]
+[참고 문서 - 양식만 참고, 주제가 다르면 무시]
 {context}
 
-[질문]
+[사용자 질문]
 {question}
 
-[답변]"""
+[한국어로 답변]"""
             
             # 5. 첨부 문서가 있으면 프롬프트에 추가
             doc_attachments = [a for a in attachment_list if a.get('type') == 'document']
@@ -709,13 +806,13 @@ async def chat(
                 app_state.current_session_id = session.id
                 app_state.pending_session = False
             
-            # 사용자 메시지 저장 (로그인한 사용자만)
-            if app_state.current_user_id and app_state.current_session_id:
-                app_state.chat_storage.add_message(
-                    app_state.current_session_id, 
-                    "user", 
-                    question
-                )
+            # 사용자 메시지는 이미 generate() 밖에서 저장됨
+            
+            # === 🧠 LLM 호출 시작 알림 ===
+            model_name = request_body["model"]
+            temp_val = model_options["temperature"]
+            yield f"data: {json.dumps({'type': 'thinking', 'step': 'LLM 응답 생성 중', 'detail': f'모델: {model_name}, 온도: {temp_val}'})}\n\n"
+            yield f"data: {json.dumps({'type': 'thinking_done'})}\n\n"  # thinking 완료 신호
             
             full_answer = ""
             # CPU 추론은 매우 느릴 수 있으므로 타임아웃을 충분히 설정
@@ -740,8 +837,9 @@ async def chat(
                             except:
                                 pass
             
-            # AI 응답 저장 (로그인한 사용자만)
+            # AI 응답 저장
             if app_state.current_user_id and app_state.current_session_id:
+                # 로그인 사용자: DB에 저장
                 app_state.chat_storage.add_message(
                     app_state.current_session_id, 
                     "assistant", 
@@ -753,6 +851,9 @@ async def chat(
                 session = app_state.chat_storage.get_session(app_state.current_session_id)
                 if session and session.message_count <= 2:
                     app_state.chat_storage.auto_title_from_first_message(app_state.current_session_id)
+            else:
+                # 비로그인 사용자: 메모리에 저장
+                app_state.temp_messages.append(TempMessage("assistant", full_answer))
             
             yield f"data: {json.dumps({'type': 'done'})}\n\n"
             
@@ -840,6 +941,7 @@ async def clear_chat():
     """새 대화 시작 (DB에 저장하지 않음 - 첫 메시지 전송 시 세션 생성)"""
     app_state.current_session_id = None
     app_state.pending_session = True  # 첫 메시지에서 세션 생성 예약
+    app_state.temp_messages = []  # 비로그인 사용자 임시 대화 초기화
     return {"success": True, "session_id": None}
 
 
