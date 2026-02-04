@@ -169,6 +169,9 @@ class AppState:
         self.indexing_progress: dict = {"current": 0, "total": 0, "status": "", "done": True}
         # 비로그인 사용자용 임시 대화 기록 (메모리)
         self.temp_messages: list = []
+        # 대화 요약 (슬라이딩 윈도우 방식)
+        self.conversation_summary: str = ""  # 이전 대화 요약본
+        self.summary_message_count: int = 0  # 요약에 포함된 메시지 수
 
 app_state = AppState()
 
@@ -525,6 +528,73 @@ async def setup_rag(collection_name: str = Form(...)):
         return JSONResponse({"error": str(e)}, status_code=500)
 
 
+# === 키워드 추출용 비동기 함수 ===
+async def _extract_keywords_async(prompt: str, model_name: str) -> str:
+    """LLM을 사용해 키워드 추출 (비동기)"""
+    try:
+        async with httpx.AsyncClient(timeout=15.0) as client:
+            response = await client.post(
+                "http://localhost:11434/api/generate",
+                json={
+                    "model": model_name or "qwen2.5:7b",
+                    "prompt": prompt,
+                    "stream": False,
+                    "options": {"temperature": 0.1, "num_predict": 100}
+                }
+            )
+            if response.status_code == 200:
+                data = response.json()
+                return data.get("response", "").strip()
+    except Exception as e:
+        print(f"[DEBUG] Keyword extraction failed: {e}")
+    return ""
+
+
+# === 대화 요약 함수 (슬라이딩 윈도우) ===
+SUMMARY_THRESHOLD = 6  # 이 개수 이상이면 요약 시작
+KEEP_RECENT = 4  # 최근 N개는 그대로 유지
+
+async def _summarize_conversation_async(messages: list, model_name: str) -> str:
+    """이전 대화를 LLM으로 요약 (비동기)"""
+    if not messages:
+        return ""
+    
+    # 요약할 대화 포맷팅
+    conversation_text = ""
+    for m in messages:
+        role = "사용자" if m.role == "user" else "AI"
+        # 너무 긴 내용은 잘라서 요약
+        content = m.content[:500] if len(m.content) > 500 else m.content
+        conversation_text += f"{role}: {content}\n"
+    
+    summary_prompt = f"""다음 대화 내용을 간결하게 요약하세요. 
+핵심 주제, 사용자가 원하는 것, 중요한 결정/정보만 포함하세요.
+200자 이내로 요약하세요. 다른 설명 없이 요약만 출력하세요.
+
+대화 내용:
+{conversation_text}
+
+요약:"""
+    
+    try:
+        async with httpx.AsyncClient(timeout=20.0) as client:
+            response = await client.post(
+                "http://localhost:11434/api/generate",
+                json={
+                    "model": model_name or "qwen2.5:7b",
+                    "prompt": summary_prompt,
+                    "stream": False,
+                    "options": {"temperature": 0.3, "num_predict": 300}
+                }
+            )
+            if response.status_code == 200:
+                data = response.json()
+                summary = data.get("response", "").strip()
+                print(f"[DEBUG] Conversation summarized: {summary[:100]}...")
+                return summary
+    except Exception as e:
+        print(f"[DEBUG] Summarization failed: {e}")
+    return ""
 
 
 @app.post("/api/chat")
@@ -590,6 +660,7 @@ async def chat(
             topic_context = ""
             main_topic = ""  # 핵심 주제 (첫 질문에서 추출)
             conversation_summary = ""  # 대화 요약
+            extracted_keywords = ""  # LLM이 추출한 키워드
             
             # 로그인 사용자: DB에서, 비로그인: 메모리에서 대화 기록 로드
             recent_msgs = []
@@ -651,10 +722,43 @@ async def chat(
                     if m.role == "assistant" and len(m.content) > 50:
                         topic_context = m.content[:200].split('\n')[0]  # 200자로 증가
                         break
+                
+                # === LLM으로 검색 키워드 추출 (대화 맥락 기반) ===
+                if len(user_msgs) > 1:
+                    yield f"data: {json.dumps({'type': 'thinking', 'step': '키워드 추출 중', 'detail': 'LLM으로 핵심 키워드 분석'})}\n\n"
+                    
+                    # 모든 사용자 질문 결합
+                    all_questions = "\n".join([f"- {m.content}" for m in user_msgs])
+                    
+                    keyword_prompt = f"""다음 대화에서 문서 검색에 사용할 핵심 키워드만 추출하세요.
+불필요한 조사, 접속사, 일상 표현은 제외하고 핵심 명사/개념만 추출합니다.
+키워드만 공백으로 구분해서 한 줄로 출력하세요. 다른 설명 없이 키워드만.
+
+대화 내용:
+{all_questions}
+
+키워드:"""
+                    
+                    try:
+                        keyword_response = await asyncio.wait_for(
+                            _extract_keywords_async(keyword_prompt, app_state.model_manager._current_model_name),
+                            timeout=10.0  # 10초 타임아웃
+                        )
+                        if keyword_response:
+                            extracted_keywords = keyword_response.strip()
+                            search_query = extracted_keywords
+                            print(f"[DEBUG] Extracted keywords: {extracted_keywords}")
+                            yield f"data: {json.dumps({'type': 'thinking', 'step': '키워드 추출 완료', 'detail': extracted_keywords[:80]})}\n\n"
+                    except asyncio.TimeoutError:
+                        print("[DEBUG] Keyword extraction timeout, using original query")
+                        search_query = f"{main_topic} {question}"
+                    except Exception as e:
+                        print(f"[DEBUG] Keyword extraction error: {e}")
+                        search_query = f"{main_topic} {question}"
             else:
                 yield f"data: {json.dumps({'type': 'thinking', 'step': '새 대화', 'detail': '이전 대화 기록 없음'})}\n\n"
             
-            # 1. 관련 문서 검색 (이전 대화 맥락 반영)
+            # 1. 관련 문서 검색 (키워드 기반)
             search_preview = search_query[:80]
             yield f"data: {json.dumps({'type': 'thinking', 'step': '문서 검색 중', 'detail': f'검색어: {search_preview}...'})}\n\n"
             docs = app_state.vector_manager.similarity_search(
@@ -697,7 +801,7 @@ async def chat(
                 for doc in docs
             )
             
-            # 3. 대화 기록 구성 (로그인: DB, 비로그인: 메모리)
+            # 3. 대화 기록 구성 (슬라이딩 윈도우 + 요약 방식)
             history_text = ""
             history_msgs = []
             if app_state.current_user_id and app_state.current_session_id:
@@ -706,20 +810,58 @@ async def chat(
                 history_msgs = app_state.temp_messages[-30:]
             
             if history_msgs:
-                yield f"data: {json.dumps({'type': 'thinking', 'step': '대화 히스토리 구성', 'detail': f'{len(history_msgs)}개 메시지 컨텍스트에 추가'})}\n\n"
-                history_text = ""
-                for i, m in enumerate(history_msgs):
-                    if m.role == "user":
-                        # 사용자 질문은 전체 보존
-                        history_text += f"[대화 {i+1}] 사용자: {m.content}\n"
-                    else:
-                        # AI 응답은 1500자까지 (더 많은 맥락)
-                        content = m.content[:1500] + "..." if len(m.content) > 1500 else m.content
-                        history_text += f"[대화 {i+1}] AI: {content}\n\n"
+                total_msg_count = len(history_msgs)
                 
-                # 대화 요약이 있으면 추가
-                if conversation_summary:
-                    history_text = f"[대화 요약]: {conversation_summary}\n\n{history_text}"
+                # === 슬라이딩 윈도우 + 요약 방식 ===
+                if total_msg_count >= SUMMARY_THRESHOLD:
+                    # 요약할 메시지 (오래된 것들) vs 유지할 메시지 (최근 것들)
+                    msgs_to_summarize = history_msgs[:-KEEP_RECENT]
+                    msgs_to_keep = history_msgs[-KEEP_RECENT:]
+                    
+                    # 요약이 필요한지 확인 (새 메시지가 추가된 경우만)
+                    if len(msgs_to_summarize) > app_state.summary_message_count:
+                        yield f"data: {json.dumps({'type': 'thinking', 'step': '대화 요약 중', 'detail': f'이전 {len(msgs_to_summarize)}개 메시지 요약 (토큰 절약)'})}\n\n"
+                        
+                        try:
+                            new_summary = await asyncio.wait_for(
+                                _summarize_conversation_async(
+                                    msgs_to_summarize, 
+                                    app_state.model_manager._current_model_name
+                                ),
+                                timeout=25.0
+                            )
+                            if new_summary:
+                                app_state.conversation_summary = new_summary
+                                app_state.summary_message_count = len(msgs_to_summarize)
+                                print(f"[DEBUG] Summary updated: {new_summary[:100]}...")
+                        except asyncio.TimeoutError:
+                            print("[DEBUG] Summarization timeout, using existing summary")
+                        except Exception as e:
+                            print(f"[DEBUG] Summarization error: {e}")
+                    
+                    # 히스토리 구성: 요약 + 최근 메시지
+                    if app_state.conversation_summary:
+                        history_text = f"[이전 대화 요약]\n{app_state.conversation_summary}\n\n[최근 대화]\n"
+                        yield f"data: {json.dumps({'type': 'thinking', 'step': '대화 히스토리 구성', 'detail': f'요약 + 최근 {len(msgs_to_keep)}개 메시지'})}\n\n"
+                    else:
+                        history_text = "[최근 대화]\n"
+                    
+                    # 최근 메시지만 상세히 포함
+                    for i, m in enumerate(msgs_to_keep):
+                        if m.role == "user":
+                            history_text += f"사용자: {m.content}\n"
+                        else:
+                            content = m.content[:1500] + "..." if len(m.content) > 1500 else m.content
+                            history_text += f"AI: {content}\n\n"
+                else:
+                    # 메시지가 적으면 전체 포함 (기존 방식)
+                    yield f"data: {json.dumps({'type': 'thinking', 'step': '대화 히스토리 구성', 'detail': f'{len(history_msgs)}개 메시지 컨텍스트에 추가'})}\n\n"
+                    for i, m in enumerate(history_msgs):
+                        if m.role == "user":
+                            history_text += f"[대화 {i+1}] 사용자: {m.content}\n"
+                        else:
+                            content = m.content[:1500] + "..." if len(m.content) > 1500 else m.content
+                            history_text += f"[대화 {i+1}] AI: {content}\n\n"
             
             yield f"data: {json.dumps({'type': 'thinking', 'step': '프롬프트 생성 중', 'detail': '컨텍스트와 대화 기록 결합'})}\n\n"
             
@@ -1003,6 +1145,9 @@ async def clear_chat():
     app_state.current_session_id = None
     app_state.pending_session = True  # 첫 메시지에서 세션 생성 예약
     app_state.temp_messages = []  # 비로그인 사용자 임시 대화 초기화
+    # 대화 요약도 초기화
+    app_state.conversation_summary = ""
+    app_state.summary_message_count = 0
     return {"success": True, "session_id": None}
 
 

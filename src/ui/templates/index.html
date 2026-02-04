@@ -512,13 +512,52 @@
                 </button>
             </div>
             <div class="p-4 border-b border-surface-800">
-                <input type="text" id="modelSearchInput" placeholder="모델 검색..."
+                <input type="text" id="modelSearchInput" placeholder="모델 검색... (qwen, llama, deepseek 등)"
                     class="w-full px-3 py-2.5 bg-surface-800 border border-surface-700 rounded-lg text-sm text-surface-200 placeholder-surface-500 focus:outline-none focus:border-accent transition-colors"
-                    onkeyup="searchModels(this.value)">
+                    onkeyup="debouncedSearchModels(this.value)">
             </div>
-            <div id="modelList" class="flex-1 overflow-y-auto p-2 max-h-[380px]"></div>
+            <!-- 추천 모델 버튼 -->
+            <div class="px-4 py-2 border-b border-surface-800">
+                <!-- Qwen 시리즈 -->
+                <div class="flex flex-wrap gap-1.5 mb-2">
+                    <span class="text-[10px] text-amber-400 font-medium w-14">Qwen:</span>
+                    <button onclick="searchModels('qwen2.5:7b')" class="px-2 py-0.5 bg-surface-800 hover:bg-amber-500/30 text-[10px] text-surface-400 hover:text-amber-400 rounded transition-colors">7B</button>
+                    <button onclick="searchModels('qwen2.5:14b')" class="px-2 py-0.5 bg-amber-500/20 hover:bg-amber-500/30 text-[10px] text-amber-400 rounded transition-colors border border-amber-500/30">14B ★</button>
+                    <button onclick="searchModels('qwen2.5:32b')" class="px-2 py-0.5 bg-surface-800 hover:bg-amber-500/30 text-[10px] text-surface-400 hover:text-amber-400 rounded transition-colors">32B</button>
+                    <button onclick="searchModels('qwen2.5:72b')" class="px-2 py-0.5 bg-surface-800 hover:bg-amber-500/30 text-[10px] text-surface-400 hover:text-amber-400 rounded transition-colors">72B</button>
+                    <button onclick="searchModels('qwen3')" class="px-2 py-0.5 bg-surface-800 hover:bg-amber-500/30 text-[10px] text-surface-400 hover:text-amber-400 rounded transition-colors">Qwen3</button>
+                    <button onclick="searchModels('qwq')" class="px-2 py-0.5 bg-surface-800 hover:bg-amber-500/30 text-[10px] text-surface-400 hover:text-amber-400 rounded transition-colors">QwQ</button>
+                </div>
+                <!-- Llama 시리즈 -->
+                <div class="flex flex-wrap gap-1.5 mb-2">
+                    <span class="text-[10px] text-green-400 font-medium w-14">Llama:</span>
+                    <button onclick="searchModels('llama3.2')" class="px-2 py-0.5 bg-surface-800 hover:bg-green-500/30 text-[10px] text-surface-400 hover:text-green-400 rounded transition-colors">3.2</button>
+                    <button onclick="searchModels('llama3.3:70b')" class="px-2 py-0.5 bg-surface-800 hover:bg-green-500/30 text-[10px] text-surface-400 hover:text-green-400 rounded transition-colors">3.3-70B</button>
+                    <button onclick="searchModels('llama3.1')" class="px-2 py-0.5 bg-surface-800 hover:bg-green-500/30 text-[10px] text-surface-400 hover:text-green-400 rounded transition-colors">3.1</button>
+                    <button onclick="searchModels('codellama')" class="px-2 py-0.5 bg-surface-800 hover:bg-green-500/30 text-[10px] text-surface-400 hover:text-green-400 rounded transition-colors">Code</button>
+                </div>
+                <!-- DeepSeek 시리즈 -->
+                <div class="flex flex-wrap gap-1.5 mb-2">
+                    <span class="text-[10px] text-purple-400 font-medium w-14">DeepSeek:</span>
+                    <button onclick="searchModels('deepseek-r1:7b')" class="px-2 py-0.5 bg-surface-800 hover:bg-purple-500/30 text-[10px] text-surface-400 hover:text-purple-400 rounded transition-colors">R1-7B</button>
+                    <button onclick="searchModels('deepseek-r1:14b')" class="px-2 py-0.5 bg-surface-800 hover:bg-purple-500/30 text-[10px] text-surface-400 hover:text-purple-400 rounded transition-colors">R1-14B</button>
+                    <button onclick="searchModels('deepseek-r1:32b')" class="px-2 py-0.5 bg-surface-800 hover:bg-purple-500/30 text-[10px] text-surface-400 hover:text-purple-400 rounded transition-colors">R1-32B</button>
+                    <button onclick="searchModels('deepseek-r1:70b')" class="px-2 py-0.5 bg-surface-800 hover:bg-purple-500/30 text-[10px] text-surface-400 hover:text-purple-400 rounded transition-colors">R1-70B</button>
+                    <button onclick="searchModels('deepseek-coder-v2')" class="px-2 py-0.5 bg-surface-800 hover:bg-purple-500/30 text-[10px] text-surface-400 hover:text-purple-400 rounded transition-colors">Coder</button>
+                </div>
+                <!-- 기타 모델 -->
+                <div class="flex flex-wrap gap-1.5">
+                    <span class="text-[10px] text-blue-400 font-medium w-14">기타:</span>
+                    <button onclick="searchModels('gemma2')" class="px-2 py-0.5 bg-surface-800 hover:bg-blue-500/30 text-[10px] text-surface-400 hover:text-blue-400 rounded transition-colors">Gemma2</button>
+                    <button onclick="searchModels('mistral')" class="px-2 py-0.5 bg-surface-800 hover:bg-blue-500/30 text-[10px] text-surface-400 hover:text-blue-400 rounded transition-colors">Mistral</button>
+                    <button onclick="searchModels('mixtral')" class="px-2 py-0.5 bg-surface-800 hover:bg-blue-500/30 text-[10px] text-surface-400 hover:text-blue-400 rounded transition-colors">Mixtral</button>
+                    <button onclick="searchModels('phi3')" class="px-2 py-0.5 bg-surface-800 hover:bg-blue-500/30 text-[10px] text-surface-400 hover:text-blue-400 rounded transition-colors">Phi3</button>
+                    <button onclick="searchModels('llava')" class="px-2 py-0.5 bg-surface-800 hover:bg-pink-500/30 text-[10px] text-surface-400 hover:text-pink-400 rounded transition-colors">LLaVA [V]</button>
+                </div>
+            </div>
+            <div id="modelList" class="flex-1 overflow-y-auto p-2 max-h-[320px]"></div>
             <div class="p-3 border-t border-surface-800 bg-surface-950 text-[11px] text-surface-500 text-center">
-                [V] = 비전 모델 (이미지 분석 지원)
+                [V] = 비전 모델 | ★ = 현재 사용 중 추천 | 4090x2: 32B-72B 추천
             </div>
         </div>
     </div>
@@ -1366,6 +1405,13 @@
 
         async function searchModels(query) {
             const list = document.getElementById('modelList');
+            const searchInput = document.getElementById('modelSearchInput');
+            
+            // 검색어를 input에도 반영 (추천 버튼 클릭 시)
+            if (query && searchInput.value !== query) {
+                searchInput.value = query;
+            }
+            
             list.innerHTML = '<div class="text-center py-8 text-surface-500">검색 중...</div>';
 
             // 이전 요청 취소
