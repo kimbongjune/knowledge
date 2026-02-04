@@ -517,42 +517,44 @@
                     onkeyup="debouncedSearchModels(this.value)">
             </div>
             <!-- 추천 모델 버튼 -->
-            <div class="px-4 py-2 border-b border-surface-800">
+            <div class="px-4 py-2 border-b border-surface-800" id="modelTagContainer">
                 <!-- Qwen 시리즈 -->
                 <div class="flex flex-wrap gap-1.5 mb-2">
                     <span class="text-[10px] text-amber-400 font-medium w-14">Qwen:</span>
-                    <button onclick="searchModels('qwen2.5:7b')" class="px-2 py-0.5 bg-surface-800 hover:bg-amber-500/30 text-[10px] text-surface-400 hover:text-amber-400 rounded transition-colors">7B</button>
-                    <button onclick="searchModels('qwen2.5:14b')" class="px-2 py-0.5 bg-amber-500/20 hover:bg-amber-500/30 text-[10px] text-amber-400 rounded transition-colors border border-amber-500/30">14B ★</button>
-                    <button onclick="searchModels('qwen2.5:32b')" class="px-2 py-0.5 bg-surface-800 hover:bg-amber-500/30 text-[10px] text-surface-400 hover:text-amber-400 rounded transition-colors">32B</button>
-                    <button onclick="searchModels('qwen2.5:72b')" class="px-2 py-0.5 bg-surface-800 hover:bg-amber-500/30 text-[10px] text-surface-400 hover:text-amber-400 rounded transition-colors">72B</button>
-                    <button onclick="searchModels('qwen3')" class="px-2 py-0.5 bg-surface-800 hover:bg-amber-500/30 text-[10px] text-surface-400 hover:text-amber-400 rounded transition-colors">Qwen3</button>
-                    <button onclick="searchModels('qwq')" class="px-2 py-0.5 bg-surface-800 hover:bg-amber-500/30 text-[10px] text-surface-400 hover:text-amber-400 rounded transition-colors">QwQ</button>
+                    <button onclick="selectModelTag(this, 'qwen2.5:7b')" class="model-tag px-2 py-0.5 bg-surface-800 hover:bg-amber-500/30 text-[10px] text-surface-400 hover:text-amber-400 rounded transition-colors" data-color="amber">7B</button>
+                    <button onclick="selectModelTag(this, 'qwen2.5:14b')" class="model-tag px-2 py-0.5 bg-surface-800 hover:bg-amber-500/30 text-[10px] text-surface-400 hover:text-amber-400 rounded transition-colors" data-color="amber">14B ★</button>
+                    <button onclick="selectModelTag(this, 'qwen2.5:32b')" class="model-tag px-2 py-0.5 bg-surface-800 hover:bg-amber-500/30 text-[10px] text-surface-400 hover:text-amber-400 rounded transition-colors" data-color="amber">32B</button>
+                    <button onclick="selectModelTag(this, 'qwen2.5:72b')" class="model-tag px-2 py-0.5 bg-surface-800 hover:bg-amber-500/30 text-[10px] text-surface-400 hover:text-amber-400 rounded transition-colors" data-color="amber">72B</button>
+                    <button onclick="selectModelTag(this, 'qwen3')" class="model-tag px-2 py-0.5 bg-surface-800 hover:bg-amber-500/30 text-[10px] text-surface-400 hover:text-amber-400 rounded transition-colors" data-color="amber">Qwen3</button>
+                    <button onclick="selectModelTag(this, 'qwq')" class="model-tag px-2 py-0.5 bg-surface-800 hover:bg-amber-500/30 text-[10px] text-surface-400 hover:text-amber-400 rounded transition-colors" data-color="amber">QwQ</button>
                 </div>
                 <!-- Llama 시리즈 -->
                 <div class="flex flex-wrap gap-1.5 mb-2">
                     <span class="text-[10px] text-green-400 font-medium w-14">Llama:</span>
-                    <button onclick="searchModels('llama3.2')" class="px-2 py-0.5 bg-surface-800 hover:bg-green-500/30 text-[10px] text-surface-400 hover:text-green-400 rounded transition-colors">3.2</button>
-                    <button onclick="searchModels('llama3.3:70b')" class="px-2 py-0.5 bg-surface-800 hover:bg-green-500/30 text-[10px] text-surface-400 hover:text-green-400 rounded transition-colors">3.3-70B</button>
-                    <button onclick="searchModels('llama3.1')" class="px-2 py-0.5 bg-surface-800 hover:bg-green-500/30 text-[10px] text-surface-400 hover:text-green-400 rounded transition-colors">3.1</button>
-                    <button onclick="searchModels('codellama')" class="px-2 py-0.5 bg-surface-800 hover:bg-green-500/30 text-[10px] text-surface-400 hover:text-green-400 rounded transition-colors">Code</button>
+                    <button onclick="selectModelTag(this, 'llama3.2')" class="model-tag px-2 py-0.5 bg-surface-800 hover:bg-green-500/30 text-[10px] text-surface-400 hover:text-green-400 rounded transition-colors" data-color="green">3.2</button>
+                    <button onclick="selectModelTag(this, 'llama3.3:70b')" class="model-tag px-2 py-0.5 bg-surface-800 hover:bg-green-500/30 text-[10px] text-surface-400 hover:text-green-400 rounded transition-colors" data-color="green">3.3-70B</button>
+                    <button onclick="selectModelTag(this, 'llama3.1')" class="model-tag px-2 py-0.5 bg-surface-800 hover:bg-green-500/30 text-[10px] text-surface-400 hover:text-green-400 rounded transition-colors" data-color="green">3.1</button>
+                    <button onclick="selectModelTag(this, 'codellama')" class="model-tag px-2 py-0.5 bg-surface-800 hover:bg-green-500/30 text-[10px] text-surface-400 hover:text-green-400 rounded transition-colors" data-color="green">Code</button>
                 </div>
                 <!-- DeepSeek 시리즈 -->
                 <div class="flex flex-wrap gap-1.5 mb-2">
                     <span class="text-[10px] text-purple-400 font-medium w-14">DeepSeek:</span>
-                    <button onclick="searchModels('deepseek-r1:7b')" class="px-2 py-0.5 bg-surface-800 hover:bg-purple-500/30 text-[10px] text-surface-400 hover:text-purple-400 rounded transition-colors">R1-7B</button>
-                    <button onclick="searchModels('deepseek-r1:14b')" class="px-2 py-0.5 bg-surface-800 hover:bg-purple-500/30 text-[10px] text-surface-400 hover:text-purple-400 rounded transition-colors">R1-14B</button>
-                    <button onclick="searchModels('deepseek-r1:32b')" class="px-2 py-0.5 bg-surface-800 hover:bg-purple-500/30 text-[10px] text-surface-400 hover:text-purple-400 rounded transition-colors">R1-32B</button>
-                    <button onclick="searchModels('deepseek-r1:70b')" class="px-2 py-0.5 bg-surface-800 hover:bg-purple-500/30 text-[10px] text-surface-400 hover:text-purple-400 rounded transition-colors">R1-70B</button>
-                    <button onclick="searchModels('deepseek-coder-v2')" class="px-2 py-0.5 bg-surface-800 hover:bg-purple-500/30 text-[10px] text-surface-400 hover:text-purple-400 rounded transition-colors">Coder</button>
+                    <button onclick="selectModelTag(this, 'deepseek-r1:7b')" class="model-tag px-2 py-0.5 bg-surface-800 hover:bg-purple-500/30 text-[10px] text-surface-400 hover:text-purple-400 rounded transition-colors" data-color="purple">R1-7B</button>
+                    <button onclick="selectModelTag(this, 'deepseek-r1:14b')" class="model-tag px-2 py-0.5 bg-surface-800 hover:bg-purple-500/30 text-[10px] text-surface-400 hover:text-purple-400 rounded transition-colors" data-color="purple">R1-14B</button>
+                    <button onclick="selectModelTag(this, 'deepseek-r1:32b')" class="model-tag px-2 py-0.5 bg-surface-800 hover:bg-purple-500/30 text-[10px] text-surface-400 hover:text-purple-400 rounded transition-colors" data-color="purple">R1-32B</button>
+                    <button onclick="selectModelTag(this, 'deepseek-r1:70b')" class="model-tag px-2 py-0.5 bg-surface-800 hover:bg-purple-500/30 text-[10px] text-surface-400 hover:text-purple-400 rounded transition-colors" data-color="purple">R1-70B</button>
+                    <button onclick="selectModelTag(this, 'deepseek-v3')" class="model-tag px-2 py-0.5 bg-surface-800 hover:bg-purple-500/30 text-[10px] text-surface-400 hover:text-purple-400 rounded transition-colors" data-color="purple">V3</button>
+                    <button onclick="selectModelTag(this, 'deepseek-coder-v2')" class="model-tag px-2 py-0.5 bg-surface-800 hover:bg-purple-500/30 text-[10px] text-surface-400 hover:text-purple-400 rounded transition-colors" data-color="purple">Coder</button>
                 </div>
                 <!-- 기타 모델 -->
                 <div class="flex flex-wrap gap-1.5">
                     <span class="text-[10px] text-blue-400 font-medium w-14">기타:</span>
-                    <button onclick="searchModels('gemma2')" class="px-2 py-0.5 bg-surface-800 hover:bg-blue-500/30 text-[10px] text-surface-400 hover:text-blue-400 rounded transition-colors">Gemma2</button>
-                    <button onclick="searchModels('mistral')" class="px-2 py-0.5 bg-surface-800 hover:bg-blue-500/30 text-[10px] text-surface-400 hover:text-blue-400 rounded transition-colors">Mistral</button>
-                    <button onclick="searchModels('mixtral')" class="px-2 py-0.5 bg-surface-800 hover:bg-blue-500/30 text-[10px] text-surface-400 hover:text-blue-400 rounded transition-colors">Mixtral</button>
-                    <button onclick="searchModels('phi3')" class="px-2 py-0.5 bg-surface-800 hover:bg-blue-500/30 text-[10px] text-surface-400 hover:text-blue-400 rounded transition-colors">Phi3</button>
-                    <button onclick="searchModels('llava')" class="px-2 py-0.5 bg-surface-800 hover:bg-pink-500/30 text-[10px] text-surface-400 hover:text-pink-400 rounded transition-colors">LLaVA [V]</button>
+                    <button onclick="selectModelTag(this, 'gemma2')" class="model-tag px-2 py-0.5 bg-surface-800 hover:bg-blue-500/30 text-[10px] text-surface-400 hover:text-blue-400 rounded transition-colors" data-color="blue">Gemma2</button>
+                    <button onclick="selectModelTag(this, 'gemma3')" class="model-tag px-2 py-0.5 bg-surface-800 hover:bg-blue-500/30 text-[10px] text-surface-400 hover:text-blue-400 rounded transition-colors" data-color="blue">Gemma3</button>
+                    <button onclick="selectModelTag(this, 'mistral')" class="model-tag px-2 py-0.5 bg-surface-800 hover:bg-blue-500/30 text-[10px] text-surface-400 hover:text-blue-400 rounded transition-colors" data-color="blue">Mistral</button>
+                    <button onclick="selectModelTag(this, 'mixtral')" class="model-tag px-2 py-0.5 bg-surface-800 hover:bg-blue-500/30 text-[10px] text-surface-400 hover:text-blue-400 rounded transition-colors" data-color="blue">Mixtral</button>
+                    <button onclick="selectModelTag(this, 'phi4')" class="model-tag px-2 py-0.5 bg-surface-800 hover:bg-blue-500/30 text-[10px] text-surface-400 hover:text-blue-400 rounded transition-colors" data-color="blue">Phi4</button>
+                    <button onclick="selectModelTag(this, 'llava')" class="model-tag px-2 py-0.5 bg-surface-800 hover:bg-pink-500/30 text-[10px] text-surface-400 hover:text-pink-400 rounded transition-colors" data-color="pink">LLaVA [V]</button>
                 </div>
             </div>
             <div id="modelList" class="flex-1 overflow-y-auto p-2 max-h-[320px]"></div>
@@ -1387,11 +1389,35 @@
         // === Model Manager ===
         function openModelManager() {
             document.getElementById('modelModal').classList.remove('hidden');
+            clearModelTagSelection();
             searchModels('');
         }
 
         function closeModelManager() {
             document.getElementById('modelModal').classList.add('hidden');
+        }
+        
+        // 모델 태그 선택 함수
+        function selectModelTag(btn, query) {
+            // 모든 태그 초기화
+            clearModelTagSelection();
+            
+            // 선택된 버튼 활성화
+            const color = btn.dataset.color || 'accent';
+            btn.classList.add('ring-2', `ring-${color}-400`, `text-${color}-300`, `bg-${color}-500/30`);
+            btn.classList.remove('text-surface-400', 'bg-surface-800');
+            btn.dataset.active = 'true';
+            
+            searchModels(query);
+        }
+        
+        function clearModelTagSelection() {
+            document.querySelectorAll('.model-tag[data-active="true"]').forEach(tag => {
+                const color = tag.dataset.color || 'accent';
+                tag.classList.remove('ring-2', `ring-${color}-400`, `text-${color}-300`, `bg-${color}-500/30`, `bg-${color}-500/40`, 'ring-1', `ring-${color}-500/50`);
+                tag.classList.add('bg-surface-800', 'text-surface-400');
+                tag.dataset.active = 'false';
+            });
         }
 
         // 모델 검색 debounce 및 요청 취소 처리
@@ -1399,8 +1425,11 @@
         let searchAbortController = null;
 
         function debouncedSearchModels(query) {
+            // 타이핑 시 태그 선택 초기화
+            clearModelTagSelection();
+            
             if (searchTimeout) clearTimeout(searchTimeout);
-            searchTimeout = setTimeout(() => searchModels(query), 300);
+            searchTimeout = setTimeout(() => searchModels(query), 400);
         }
 
         async function searchModels(query) {
