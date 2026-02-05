@@ -1395,13 +1395,19 @@
         }
 
         async function openFileFolder(path) {
+            // 원격 서버에서 파일 다운로드
             try {
-                const form = new FormData();
-                form.append('path', path);
-                const res = await fetch('/api/open-folder', { method: 'POST', body: form });
-                const data = await res.json();
-                if (data.error) alert('실패: ' + data.error);
-            } catch (e) { console.error(e); }
+                const url = '/api/download-file?path=' + encodeURIComponent(path);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = path.split('/').pop() || path.split('\\').pop() || 'file';
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+            } catch (e) {
+                console.error(e);
+                alert('다운로드 실패: ' + e.message);
+            }
         }
 
         function copyToClipboard(btn) {

@@ -1008,6 +1008,36 @@ async def extract_text(file: UploadFile = File(...)):
         return JSONResponse({"error": str(e)}, status_code=500)
 
 
+@app.get("/api/download-file")
+async def download_file(path: str):
+    """파일 다운로드 API - 원격 클라이언트가 서버의 파일을 다운로드"""
+    from fastapi.responses import FileResponse
+    from pathlib import Path
+    import mimetypes
+    
+    try:
+        file_path = Path(path)
+        
+        if not file_path.exists():
+            return JSONResponse({"error": "파일이 존재하지 않습니다."}, status_code=404)
+        
+        if not file_path.is_file():
+            return JSONResponse({"error": "폴더는 다운로드할 수 없습니다."}, status_code=400)
+        
+        # MIME 타입 추정
+        mime_type, _ = mimetypes.guess_type(str(file_path))
+        if not mime_type:
+            mime_type = "application/octet-stream"
+        
+        return FileResponse(
+            path=str(file_path),
+            filename=file_path.name,
+            media_type=mime_type
+        )
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+
 @app.post("/api/open-folder")
 async def open_folder(path: str = Form(...)):
     """파일이 있는 폴더를 서버에서 열기 (서버가 윈도우/리눅스일 때 모두 지원)"""
