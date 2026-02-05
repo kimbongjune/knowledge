@@ -512,13 +512,54 @@
                 </button>
             </div>
             <div class="p-4 border-b border-surface-800">
-                <input type="text" id="modelSearchInput" placeholder="모델 검색..."
+                <input type="text" id="modelSearchInput" placeholder="모델 검색... (qwen, llama, deepseek 등)"
                     class="w-full px-3 py-2.5 bg-surface-800 border border-surface-700 rounded-lg text-sm text-surface-200 placeholder-surface-500 focus:outline-none focus:border-accent transition-colors"
-                    onkeyup="searchModels(this.value)">
+                    onkeyup="debouncedSearchModels(this.value)">
             </div>
-            <div id="modelList" class="flex-1 overflow-y-auto p-2 max-h-[380px]"></div>
+            <!-- 추천 모델 버튼 -->
+            <div class="px-4 py-2 border-b border-surface-800" id="modelTagContainer">
+                <!-- Qwen 시리즈 -->
+                <div class="flex flex-wrap gap-1.5 mb-2">
+                    <span class="text-[10px] text-amber-400 font-medium w-14">Qwen:</span>
+                    <button onclick="selectModelTag(this, 'qwen2.5:7b')" class="model-tag px-2 py-0.5 bg-surface-800 hover:bg-amber-500/30 text-[10px] text-surface-400 hover:text-amber-400 rounded transition-colors" data-color="amber">7B</button>
+                    <button onclick="selectModelTag(this, 'qwen2.5:14b')" class="model-tag px-2 py-0.5 bg-surface-800 hover:bg-amber-500/30 text-[10px] text-surface-400 hover:text-amber-400 rounded transition-colors" data-color="amber">14B ★</button>
+                    <button onclick="selectModelTag(this, 'qwen2.5:32b')" class="model-tag px-2 py-0.5 bg-surface-800 hover:bg-amber-500/30 text-[10px] text-surface-400 hover:text-amber-400 rounded transition-colors" data-color="amber">32B</button>
+                    <button onclick="selectModelTag(this, 'qwen2.5:72b')" class="model-tag px-2 py-0.5 bg-surface-800 hover:bg-amber-500/30 text-[10px] text-surface-400 hover:text-amber-400 rounded transition-colors" data-color="amber">72B</button>
+                    <button onclick="selectModelTag(this, 'qwen3')" class="model-tag px-2 py-0.5 bg-surface-800 hover:bg-amber-500/30 text-[10px] text-surface-400 hover:text-amber-400 rounded transition-colors" data-color="amber">Qwen3</button>
+                    <button onclick="selectModelTag(this, 'qwq')" class="model-tag px-2 py-0.5 bg-surface-800 hover:bg-amber-500/30 text-[10px] text-surface-400 hover:text-amber-400 rounded transition-colors" data-color="amber">QwQ</button>
+                </div>
+                <!-- Llama 시리즈 -->
+                <div class="flex flex-wrap gap-1.5 mb-2">
+                    <span class="text-[10px] text-green-400 font-medium w-14">Llama:</span>
+                    <button onclick="selectModelTag(this, 'llama3.2')" class="model-tag px-2 py-0.5 bg-surface-800 hover:bg-green-500/30 text-[10px] text-surface-400 hover:text-green-400 rounded transition-colors" data-color="green">3.2</button>
+                    <button onclick="selectModelTag(this, 'llama3.3:70b')" class="model-tag px-2 py-0.5 bg-surface-800 hover:bg-green-500/30 text-[10px] text-surface-400 hover:text-green-400 rounded transition-colors" data-color="green">3.3-70B</button>
+                    <button onclick="selectModelTag(this, 'llama3.1')" class="model-tag px-2 py-0.5 bg-surface-800 hover:bg-green-500/30 text-[10px] text-surface-400 hover:text-green-400 rounded transition-colors" data-color="green">3.1</button>
+                    <button onclick="selectModelTag(this, 'codellama')" class="model-tag px-2 py-0.5 bg-surface-800 hover:bg-green-500/30 text-[10px] text-surface-400 hover:text-green-400 rounded transition-colors" data-color="green">Code</button>
+                </div>
+                <!-- DeepSeek 시리즈 -->
+                <div class="flex flex-wrap gap-1.5 mb-2">
+                    <span class="text-[10px] text-purple-400 font-medium w-14">DeepSeek:</span>
+                    <button onclick="selectModelTag(this, 'deepseek-r1:7b')" class="model-tag px-2 py-0.5 bg-surface-800 hover:bg-purple-500/30 text-[10px] text-surface-400 hover:text-purple-400 rounded transition-colors" data-color="purple">R1-7B</button>
+                    <button onclick="selectModelTag(this, 'deepseek-r1:14b')" class="model-tag px-2 py-0.5 bg-surface-800 hover:bg-purple-500/30 text-[10px] text-surface-400 hover:text-purple-400 rounded transition-colors" data-color="purple">R1-14B</button>
+                    <button onclick="selectModelTag(this, 'deepseek-r1:32b')" class="model-tag px-2 py-0.5 bg-surface-800 hover:bg-purple-500/30 text-[10px] text-surface-400 hover:text-purple-400 rounded transition-colors" data-color="purple">R1-32B</button>
+                    <button onclick="selectModelTag(this, 'deepseek-r1:70b')" class="model-tag px-2 py-0.5 bg-surface-800 hover:bg-purple-500/30 text-[10px] text-surface-400 hover:text-purple-400 rounded transition-colors" data-color="purple">R1-70B</button>
+                    <button onclick="selectModelTag(this, 'deepseek-v3')" class="model-tag px-2 py-0.5 bg-surface-800 hover:bg-purple-500/30 text-[10px] text-surface-400 hover:text-purple-400 rounded transition-colors" data-color="purple">V3</button>
+                    <button onclick="selectModelTag(this, 'deepseek-coder-v2')" class="model-tag px-2 py-0.5 bg-surface-800 hover:bg-purple-500/30 text-[10px] text-surface-400 hover:text-purple-400 rounded transition-colors" data-color="purple">Coder</button>
+                </div>
+                <!-- 기타 모델 -->
+                <div class="flex flex-wrap gap-1.5">
+                    <span class="text-[10px] text-blue-400 font-medium w-14">기타:</span>
+                    <button onclick="selectModelTag(this, 'gemma2')" class="model-tag px-2 py-0.5 bg-surface-800 hover:bg-blue-500/30 text-[10px] text-surface-400 hover:text-blue-400 rounded transition-colors" data-color="blue">Gemma2</button>
+                    <button onclick="selectModelTag(this, 'gemma3')" class="model-tag px-2 py-0.5 bg-surface-800 hover:bg-blue-500/30 text-[10px] text-surface-400 hover:text-blue-400 rounded transition-colors" data-color="blue">Gemma3</button>
+                    <button onclick="selectModelTag(this, 'mistral')" class="model-tag px-2 py-0.5 bg-surface-800 hover:bg-blue-500/30 text-[10px] text-surface-400 hover:text-blue-400 rounded transition-colors" data-color="blue">Mistral</button>
+                    <button onclick="selectModelTag(this, 'mixtral')" class="model-tag px-2 py-0.5 bg-surface-800 hover:bg-blue-500/30 text-[10px] text-surface-400 hover:text-blue-400 rounded transition-colors" data-color="blue">Mixtral</button>
+                    <button onclick="selectModelTag(this, 'phi4')" class="model-tag px-2 py-0.5 bg-surface-800 hover:bg-blue-500/30 text-[10px] text-surface-400 hover:text-blue-400 rounded transition-colors" data-color="blue">Phi4</button>
+                    <button onclick="selectModelTag(this, 'llava')" class="model-tag px-2 py-0.5 bg-surface-800 hover:bg-pink-500/30 text-[10px] text-surface-400 hover:text-pink-400 rounded transition-colors" data-color="pink">LLaVA [V]</button>
+                </div>
+            </div>
+            <div id="modelList" class="flex-1 overflow-y-auto p-2 max-h-[320px]"></div>
             <div class="p-3 border-t border-surface-800 bg-surface-950 text-[11px] text-surface-500 text-center">
-                [V] = 비전 모델 (이미지 분석 지원)
+                [V] = 비전 모델 | ★ = 현재 사용 중 추천 | 4090x2: 32B-72B 추천
             </div>
         </div>
     </div>
@@ -913,17 +954,36 @@
                     </div>
                 </div>`;
 
-            // AI response
+            // AI response with thinking area
             const responseId = 'response-' + Date.now();
+            const thinkingId = 'thinking-' + Date.now();
             messages.innerHTML += `
                 <div class="flex px-6 py-2 group animate-slideIn" id="${responseId}">
                     <div class="w-8 h-8 bg-surface-800 border border-surface-700 rounded-lg flex items-center justify-center text-accent text-xs font-semibold mr-3 flex-shrink-0">AI</div>
-                    <div class="max-w-3xl bg-surface-800 border border-surface-700 text-surface-200 px-4 py-3 rounded-2xl rounded-bl-sm prose relative">
-                        <div class="response-text text-[15px] leading-relaxed"></div>
-                        <span class="typing-cursor text-accent">|</span>
-                        <button onclick="copyToClipboard(this)" class="absolute top-2 right-2 p-1.5 text-surface-500 hover:text-white bg-surface-900/50 hover:bg-surface-700 rounded-lg opacity-0 group-hover:opacity-100 transition-all" title="복사">
-                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m0 0h2a2 2 0 012 2v3m2 4H10m0 0l3-3m-3 3l3 3"/></svg>
-                        </button>
+                    <div class="max-w-3xl w-full">
+                        <!-- Thinking Panel (collapsible) -->
+                        <div id="${thinkingId}" class="mb-2 bg-surface-900/50 border border-surface-700/50 rounded-lg overflow-hidden">
+                            <button onclick="toggleThinking('${thinkingId}')" class="w-full px-3 py-2 flex items-center justify-between text-xs text-surface-400 hover:text-surface-200 transition-colors">
+                                <span class="flex items-center gap-2">
+                                    <svg class="w-4 h-4 animate-pulse-subtle" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"/>
+                                    </svg>
+                                    <span class="thinking-status">추론 중...</span>
+                                </span>
+                                <svg class="w-4 h-4 thinking-chevron transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
+                                </svg>
+                            </button>
+                            <div class="thinking-content px-3 pb-2 space-y-1 text-xs text-surface-500"></div>
+                        </div>
+                        <!-- Response -->
+                        <div class="bg-surface-800 border border-surface-700 text-surface-200 px-4 py-3 rounded-2xl rounded-bl-sm prose relative">
+                            <div class="response-text text-[15px] leading-relaxed"></div>
+                            <span class="typing-cursor text-accent">|</span>
+                            <button onclick="copyToClipboard(this)" class="absolute top-2 right-2 p-1.5 text-surface-500 hover:text-white bg-surface-900/50 hover:bg-surface-700 rounded-lg opacity-0 group-hover:opacity-100 transition-all" title="복사">
+                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m0 0h2a2 2 0 012 2v3m2 4H10m0 0l3-3m-3 3l3 3"/></svg>
+                            </button>
+                        </div>
                     </div>
                 </div>`;
 
@@ -956,10 +1016,14 @@
                 const decoder = new TextDecoder();
 
                 const responseEl = document.getElementById(responseId);
+                const thinkingEl = document.getElementById(thinkingId);
+                const thinkingContent = thinkingEl.querySelector('.thinking-content');
+                const thinkingStatus = thinkingEl.querySelector('.thinking-status');
                 const textEl = responseEl.querySelector('.response-text');
                 const cursorEl = responseEl.querySelector('.typing-cursor');
                 let sources = [];
                 let fullText = '';
+                let thinkingSteps = [];
 
                 while (true) {
                     const { done, value } = await reader.read();
@@ -972,7 +1036,30 @@
                         if (line.startsWith('data: ')) {
                             try {
                                 const data = JSON.parse(line.slice(6));
-                                if (data.type === 'token') {
+                                if (data.type === 'thinking') {
+                                    // 추론 과정 표시
+                                    thinkingSteps.push({ step: data.step, detail: data.detail });
+                                    thinkingStatus.textContent = data.step;
+                                    thinkingContent.innerHTML = thinkingSteps.map(t => 
+                                        `<div class="flex items-start gap-2 py-1">
+                                            <span class="text-accent">•</span>
+                                            <div>
+                                                <span class="text-surface-300">${escapeHtml(t.step)}</span>
+                                                <span class="text-surface-500 ml-1">${escapeHtml(t.detail || '')}</span>
+                                            </div>
+                                        </div>`
+                                    ).join('');
+                                    messages.scrollTop = messages.scrollHeight;
+                                }
+                                else if (data.type === 'thinking_done') {
+                                    // 추론 완료 - 패널 접기 준비
+                                    thinkingStatus.textContent = `추론 완료 (${thinkingSteps.length}단계)`;
+                                    thinkingEl.querySelector('svg.animate-pulse-subtle')?.classList.remove('animate-pulse-subtle');
+                                    // 자동으로 접기 (선택적)
+                                    // thinkingContent.classList.add('hidden');
+                                    // thinkingEl.querySelector('.thinking-chevron')?.classList.add('rotate-180');
+                                }
+                                else if (data.type === 'token') {
                                     fullText += data.data;
                                     textEl.innerHTML = escapeHtml(fullText);
                                     messages.scrollTop = messages.scrollHeight;
@@ -986,6 +1073,11 @@
                                             `<span class="text-accent hover:underline cursor-pointer" onclick="openFileFolder('${s.path.replace(/\\/g, '\\\\')}')">${s.filename}</span>`
                                         ).join(', ');
                                         textEl.innerHTML += `<div class="mt-3 pt-3 border-t border-surface-700 text-xs text-surface-400">Sources: ${links}</div>`;
+                                    }
+                                    // 추론 패널 자동 접기
+                                    if (thinkingContent && !thinkingContent.classList.contains('hidden')) {
+                                        thinkingContent.classList.add('hidden');
+                                        thinkingEl.querySelector('.thinking-chevron')?.classList.add('rotate-180');
                                     }
                                     refreshSessions();
                                     lastFailedQuestion = null;
@@ -1028,6 +1120,21 @@
                 abortController = null;
                 btn.innerHTML = '<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" /></svg>';
                 messages.scrollTop = messages.scrollHeight;
+            }
+        }
+
+        // === Thinking Panel Toggle ===
+        function toggleThinking(thinkingId) {
+            const thinkingEl = document.getElementById(thinkingId);
+            if (!thinkingEl) return;
+            const content = thinkingEl.querySelector('.thinking-content');
+            const chevron = thinkingEl.querySelector('.thinking-chevron');
+            if (content.classList.contains('hidden')) {
+                content.classList.remove('hidden');
+                chevron?.classList.remove('rotate-180');
+            } else {
+                content.classList.add('hidden');
+                chevron?.classList.add('rotate-180');
             }
         }
 
@@ -1282,11 +1389,35 @@
         // === Model Manager ===
         function openModelManager() {
             document.getElementById('modelModal').classList.remove('hidden');
+            clearModelTagSelection();
             searchModels('');
         }
 
         function closeModelManager() {
             document.getElementById('modelModal').classList.add('hidden');
+        }
+        
+        // 모델 태그 선택 함수
+        function selectModelTag(btn, query) {
+            // 모든 태그 초기화
+            clearModelTagSelection();
+            
+            // 선택된 버튼 활성화
+            const color = btn.dataset.color || 'accent';
+            btn.classList.add('ring-2', `ring-${color}-400`, `text-${color}-300`, `bg-${color}-500/30`);
+            btn.classList.remove('text-surface-400', 'bg-surface-800');
+            btn.dataset.active = 'true';
+            
+            searchModels(query);
+        }
+        
+        function clearModelTagSelection() {
+            document.querySelectorAll('.model-tag[data-active="true"]').forEach(tag => {
+                const color = tag.dataset.color || 'accent';
+                tag.classList.remove('ring-2', `ring-${color}-400`, `text-${color}-300`, `bg-${color}-500/30`, `bg-${color}-500/40`, 'ring-1', `ring-${color}-500/50`);
+                tag.classList.add('bg-surface-800', 'text-surface-400');
+                tag.dataset.active = 'false';
+            });
         }
 
         // 모델 검색 debounce 및 요청 취소 처리
@@ -1294,12 +1425,22 @@
         let searchAbortController = null;
 
         function debouncedSearchModels(query) {
+            // 타이핑 시 태그 선택 초기화
+            clearModelTagSelection();
+            
             if (searchTimeout) clearTimeout(searchTimeout);
-            searchTimeout = setTimeout(() => searchModels(query), 300);
+            searchTimeout = setTimeout(() => searchModels(query), 400);
         }
 
         async function searchModels(query) {
             const list = document.getElementById('modelList');
+            const searchInput = document.getElementById('modelSearchInput');
+            
+            // 검색어를 input에도 반영 (추천 버튼 클릭 시)
+            if (query && searchInput.value !== query) {
+                searchInput.value = query;
+            }
+            
             list.innerHTML = '<div class="text-center py-8 text-surface-500">검색 중...</div>';
 
             // 이전 요청 취소
